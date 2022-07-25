@@ -1,0 +1,4 @@
+pysimplegui
+pillow
+bs4
+requests

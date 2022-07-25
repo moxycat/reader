@@ -1,0 +1,11 @@
+import PySimpleGUI as sg
+
+def make_window():
+    layout = [
+        [
+            sg.Column([
+                [sg.Listbox([], key="details_chapters", size=(90, 15), enable_events=True)]
+            ], key="details_chapters_col", justification="c", vertical_alignment="c")
+        ],
+    ]
+    return sg.Window("", layout, element_justification="l", finalize=True, modal=True, disable_minimize=True)
