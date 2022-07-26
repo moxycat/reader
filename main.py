@@ -2,10 +2,9 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
-import tempfile
 
 import mangakatana
-import reader, chapter_view
+import reader, chapter_view, library
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10))
@@ -17,7 +16,7 @@ search_controls = [
     [
         sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white", ),
         sg.Input("", key="search_bar", size=(90, 1), focus=True),
-        sg.Button("🔍", key="search")
+        sg.Button("⌕", key="search", bind_return_key=True)
     ],
     [sg.Text("", key="search_status", size=(90, 1))],
     [sg.HSeparator()],
@@ -45,6 +44,7 @@ search_controls = [
                 [sg.Text(key="preview_update")],
                 [sg.Multiline(key="preview_desc", disabled=True, background_color="white", size=(50, 15), visible=False)],
                 [
+                    sg.Button("Continue reading", key="read_continue", visible=False),
                     sg.Button("View chapters", key="details", visible=False),
                     sg.Button("Latest chapter", key="read_latest", visible=False),
                 ]
@@ -61,11 +61,47 @@ layout = [
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
 wreader = None
 wdetails = None
+wreadlist = None
 results = []
 info = {}
 images = []
 image_urls = []
 chapter_index = 0
+page_index = 0
+vscroll_perc = 0.0
+hscroll_perc = 0.0
+
+def set_page():
+    global wreader, images, page_index, chapter_index, vscroll_perc, hscroll_perc
+    wreader["reader_page_num"].update("{}/{}".format(str(page_index + 1).zfill(2), str(len(images)).zfill(2)))
+    wreader.TKroot.title(info["chapters"][chapter_index]["name"])
+    wreader["reader_page_img"].update(data=images[page_index])
+    wreader.refresh()
+    wreader["reader_page_img_col"].contents_changed()
+    if chapter_index == 0:
+        wreader["reader_go_prev_ch"].update(disabled=True)
+    else:
+        wreader["reader_go_prev_ch"].update(disabled=False)
+
+    if chapter_index == len(info["chapters"]) - 1:
+        wreader["reader_go_next_ch"].update(disabled=True)
+    else:
+        wreader["reader_go_next_ch"].update(disabled=False)
+
+    if page_index == 0:
+        wreader["reader_go_back"].update(disabled=True)
+    else:
+        wreader["reader_go_back"].update(disabled=False)
+
+    if page_index == len(images) - 1:
+        wreader["reader_go_fwd"].update(disabled=True)
+    else:
+        wreader["reader_go_fwd"].update(disabled=False)
+
+    vscroll_perc = 0.0
+    #hscroll_perc = 0.0
+    wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
+    #wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
 
 while True:
     w, e, v = sg.read_all_windows()
@@ -75,7 +111,7 @@ while True:
         wreader.close()
         wind.un_hide()
     if e == "search":
-        results.clear()
+        #results.clear()
         query = v["search_bar"]
         mode = 0 if v["search_method"] == "Book name" else 1 if v["search_method"] == "Author" else 0
         if len(query) < 3:
@@ -84,6 +120,7 @@ while True:
         wind["search_status"].update("Searching...")
         wind.refresh()
         results = mangakatana.search(query, mode)
+        print(results)
         if results is None:
             wind["search_status"].update("Found nothing.")
             continue
@@ -114,6 +151,11 @@ while True:
         wind["preview_latest"].update("Latest chapter: " + info["chapters"][-1]["name"])
         wind["preview_update"].update("Updated at:     " + info["chapters"][-1]["date"])
         wind["preview_desc"].update("\n".join(textwrap.wrap(info["description"], width=50)), visible=True)
+        
+        isin, rows = library.is_in_lib(info["url"])
+        if isin:
+            chapter_index = int(rows[1]) - 1
+            wind["read_continue"].update(text="[{}]".format(info["chapters"][chapter_index]["name"]), visible=True)
         wind["read_latest"].update(visible=True)
         wind["details"].update(visible=True)
         wind.refresh()
@@ -125,176 +167,154 @@ while True:
         dates = [a["date"] for a in info["chapters"][::-1]]
         longestname = max([len(a) for a in chapters])
         chapter_and_date = ["{}{}{}".format(a[0], " " * (longestname - len(a[0]) + 5), a[1]) for a in zip(chapters, dates)]
-        #wdetails["read"].update(visible=True)
-        #wdetails["goto_chapter"].update(visible=True)
         wdetails["details_chapters"].Widget.configure(width = max([len(a) for a in chapter_and_date]))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
     
     if w == wdetails and e == sg.WIN_CLOSED:
         wdetails.close()
+        wdetails = None
     
+    # loader + downloader
     if e == "details_chapters":
         ix = wdetails["details_chapters"].get_indexes()[0]
-        nch = len(info["chapters"])
-        print(nch)
-        print(ix)
-        chapter_index = nch - ix - 1
+        chapter_index = len(info["chapters"]) - ix - 1
+        page_index = 0
+        
+        image_urls.clear()
+        images.clear()
+
+        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
+        images = mangakatana.download_images(image_urls)
+        
         wdetails.close()
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = [None] * len(image_urls)
-        im = Image.open(requests.get(image_urls[0], stream=True).raw)
-        #im.thumbnail((650, 650), resample=Image.BICUBIC)
-        images[0] = ImageTk.PhotoImage(image=im)
-
         wind.hide()
-        wreader = reader.reader_make_window()
-        wreader["reader_page_num"].update("01/{}".format(str(len(image_urls))).zfill(2))
-        wreader.TKroot.title(info["chapters"][chapter_index]["name"])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
+        if wreader is None:
+            wreader = reader.reader_make_window()
+        else:
+            wreader.bring_to_front()
+        set_page()
 
-    if e == "read":
-        chapter_index = 0
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = [None] * len(image_urls)
-        im = Image.open(requests.get(image_urls[0], stream=True).raw)
-        #im.thumbnail((650, 650), resample=Image.BICUBIC)
-        images[0] = ImageTk.PhotoImage(image=im)
-
-        wind.hide()
-        wreader = reader.reader_make_window()
-        wreader["reader_page_num"].update("01/{}".format(str(len(image_urls))).zfill(2))
-        wreader.TKroot.title(info["chapters"][chapter_index]["name"])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-
+    # loader + downloader
     if e == "read_latest":
         chapter_index = len(info["chapters"]) - 1
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = [None] * len(image_urls)
-        im = Image.open(requests.get(image_urls[0], stream=True).raw)
-        #im.thumbnail((650, 650), resample=Image.BICUBIC)
-        images[0] = ImageTk.PhotoImage(image=im)
+        page_index = 0
+        
+        image_urls.clear()
+        images.clear()
 
+        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
+        images = mangakatana.download_images(image_urls)
+        
         wind.hide()
-        wreader = reader.reader_make_window()
-        wreader["reader_page_num"].update("01/{}".format(str(len(image_urls)).zfill(2)))
-        wreader.TKroot.title(info["chapters"][chapter_index]["name"])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
+        if wreader is None:
+            wreader = reader.reader_make_window()
+        else: wreader.bring_to_front()
+        set_page()
+    
+    if e == "read_continue":
+        page_index = 0
+        
+        image_urls.clear()
+        images.clear()
+
+        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
+        images = mangakatana.download_images(image_urls)
+        
+        wind.hide()
+        if wreader is None:
+            wreader = reader.reader_make_window()
+        else: wreader.bring_to_front()
+        set_page()
 
     if e == "reader_page_num":
         max_page = int(wreader["reader_page_num"].get().split("/")[1])
-        print(max_page)
         page = reader.jump(max_page)
         if page is None: continue
-        if images[page - 1] is None:
-            im = Image.open(requests.get(image_urls[0], stream=True).raw)
-            images[page - 1] = ImageTk.PhotoImage(image=im)
-
-        wreader["reader_page_num"].update("{}/{}".format(str(page).zfill(2), str(max_page).zfill(2)))
-        wreader["reader_page_img"].update(data=images[page - 1])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        page_index = page - 1
+        set_page()
     
+    if e == "reader_scroll_down":
+        if vscroll_perc + 0.05 <= 1.0: vscroll_perc += 0.05
+        else: continue
+        vscroll_perc = round(vscroll_perc, 2)
+        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
+
+    if e == "reader_scroll_up":
+        if vscroll_perc - 0.05 >= 0.0: vscroll_perc -= 0.05
+        else: continue
+        vscroll_perc = round(vscroll_perc, 2)
+        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
+
+    if e == "reader_scroll_left":
+        if hscroll_perc - 0.05 >= 0: hscroll_perc -= 0.05
+        else: continue
+        hscroll_perc = round(hscroll_perc, 2)
+        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
+
+    if e == "reader_scroll_right":
+        if hscroll_perc + 0.05 >= 0: hscroll_perc += 0.05
+        else: continue
+        hscroll_perc = round(hscroll_perc, 2)
+        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
+
     if e == "reader_go_fwd":
-        current_page = int(wreader["reader_page_num"].get().split("/")[0])
         max_page = int(wreader["reader_page_num"].get().split("/")[1])
-        if current_page + 1 > max_page: continue
-
-        if images[current_page] is None:
-            im = Image.open(requests.get(image_urls[current_page], stream=True).raw)
-            images[current_page] = ImageTk.PhotoImage(image=im)
-
-        wreader["reader_page_img"].update(data=images[current_page])
-        wreader["reader_page_num"].update("{}/{}".format(str(current_page + 1).zfill(2), str(max_page).zfill(2)))
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        if page_index + 1 > max_page - 1: continue
+        page_index += 1
+        set_page()
 
     if e == "reader_go_back":
-        current_page = int(wreader["reader_page_num"].get().split("/")[0])
         max_page = int(wreader["reader_page_num"].get().split("/")[1])
-        if current_page - 1 < 1: continue
-        
-        if images[current_page - 2] is None:
-            im = Image.open(requests.get(image_urls[current_page - 2], stream=True).raw)
-            images[current_page - 2] = ImageTk.PhotoImage(image=im)
-
-        wreader["reader_page_img"].update(data=images[current_page - 2])
-        wreader["reader_page_num"].update("{}/{}".format(str(current_page - 1).zfill(2), str(max_page).zfill(2)))
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        if page_index - 1 < 0: continue
+        page_index -= 1
+        set_page()
 
     if e == "reader_go_home":
-        max_page = int(wreader["reader_page_num"].get().split("/")[1])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader["reader_page_num"].update("01/{}".format(str(max_page).zfill(2)))
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].set_vscroll_position(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        page_index = 0
+        set_page()
 
     if e == "reader_go_end":
-        max_page = int(wreader["reader_page_num"].get().split("/")[1])
-        
-        if images[max_page - 1] is None:
-            im = Image.open(requests.get(image_urls[max_page - 1], stream=True).raw)
-            images[max_page - 1] = ImageTk.PhotoImage(image=im)
-
-        wreader["reader_page_img"].update(data=images[max_page - 1])
-        wreader["reader_page_num"].update("{}/{}".format(str(max_page).zfill(2), str(max_page).zfill(2)))
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        page_index = max_page - 1
+        set_page()
 
     if e == "reader_go_next_ch":
         if chapter_index + 1 >= len(info["chapters"]):
             continue
         else: chapter_index += 1
+        page_index = 0
         image_urls.clear()
         images.clear()
         
         image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = [None] * len(image_urls)
-        im = Image.open(requests.get(image_urls[0], stream=True).raw)
-        #im.thumbnail((650, 650), resample=Image.BICUBIC)
-        images[0] = ImageTk.PhotoImage(image=im)
-        wreader["reader_page_num"].update("01/{}".format(str(len(image_urls)).zfill(2)))
-        wreader.TKroot.title(info["chapters"][chapter_index]["name"])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        images = mangakatana.download_images(image_urls)
+        set_page()
 
     if e == "reader_go_prev_ch":
         if chapter_index - 1 < 0:
             continue
         else: chapter_index -= 1
+        page_index = 0
         image_urls.clear()
         images.clear()
         
         image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = [None] * len(image_urls)
-        im = Image.open(requests.get(image_urls[0], stream=True).raw)
-        images[0] = ImageTk.PhotoImage(image=im)
-        wreader["reader_page_num"].update("01/{}".format(str(len(image_urls)).zfill(2)))
-        wreader.TKroot.title(info["chapters"][chapter_index]["name"])
-        wreader["reader_page_img"].update(data=images[0])
-        wreader.refresh()
-        wreader["reader_page_img_col"].contents_changed()
-        wreader["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
-        wreader["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
+        images = mangakatana.download_images(image_urls)
+        set_page()
 
+    if e == "Maximize window":
+        wreader.Maximize()
+    
+    if e == "Reading list":
+        if wreadlist is not None:
+            wreadlist.un_hide()
+            wreadlist.bring_to_front()
+        else: wreadlist = library.make_window()
+    
+    if e == "lib_tree":
+        print(v["lib_tree"])
+    
+    if w == wreadlist and e == sg.WIN_CLOSED:
+        wreadlist.hide()
+        wreadlist = None
+        
 wind.close()

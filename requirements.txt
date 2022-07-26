@@ -2,3 +2,7 @@ pysimplegui
 pillow
 bs4
 requests
+lxml
+asyncio
+aiohttp
+aiofiles

@@ -2,22 +2,25 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
+from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
+from PIL import Image
+import asyncio, aiohttp
 import re
 
 def get_manga_info(url: str) -> dict:
     resp = r.get(url)
     if resp.status_code != 200: return None
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(resp.text, "lxml")
     
     link = soup.find("link", {"rel": "canonical"}).get("href")
     cover_url = soup.find("div", {"class": "cover"}).find("img").get("src")
     title = soup.find("h1", {"class": "heading"}).text.strip()
     
     alt_names_div = soup.find("div", {"class": "alt_name"})
-    if alt_names_div is None: alt_names = None
+    if alt_names_div is None: alt_names = [""]
     else: alt_names = [name.strip() for name in alt_names_div.text.split(" ; ")]
     author = soup.find("a", {"class": "author"}).text.strip()
     genres = [a.text.strip() for a in soup.find("div", {"class": "genres"})]
@@ -56,7 +59,7 @@ def search(query: str, search_by: int = 0) -> list:
     url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
     resp = r.get(url)
     if resp.status_code != 200: return None
-    soup = BeautifulSoup(resp.text, "html.parser")
+    soup = BeautifulSoup(resp.text, "lxml")
 
     nresults = soup.find("div", {"class": "widget-title"}).find("span").text.strip()
     if not nresults.startswith("Search"): nresults = 1
@@ -86,7 +89,7 @@ def search(query: str, search_by: int = 0) -> list:
         url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
         resp = r.get(url)
         if resp.status_code != 200: return None
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(resp.text, "lxml")
         books = soup.find("div", {"id": "book_list"}).find_all("div", {"class": "item"})
     
     return results
@@ -98,3 +101,24 @@ def get_manga_chapter_images(url: str) -> list:
     images = images[0].replace("'", "").split(",")
     images = list(filter(lambda item: item is not None, images))
     return images
+
+def download_images(urls: list) -> list:
+    sem = asyncio.BoundedSemaphore(10)
+    results = [None] * len(urls)
+    async def fetch(url: str, i: int):
+        async with sem, aiohttp.ClientSession() as sesh:
+            async with sesh.get(url) as resp:
+                buf = BytesIO()
+                outbuf = BytesIO()
+                buf.write(await resp.read())
+                im = Image.open(buf)
+                im.save(outbuf, "png")
+                results[i] = outbuf.getvalue()
+                im.close()
+                buf.close()
+                outbuf.close()
+    
+    loop = asyncio.get_event_loop()
+    tasks = [loop.create_task(fetch(a[0], a[1])) for a in zip(urls, range(len(urls)))]
+    loop.run_until_complete(asyncio.wait(tasks))
+    return results

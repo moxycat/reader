@@ -3,10 +3,10 @@ import PySimpleGUI as sg
 def reader_make_window():
     layout = [
         [
-            sg.Menu([["&Tools", ["&Save screenshot", "&Exit"]]], key="reader_menu")
+            sg.Menu([["&Tools", ["&Save screenshot", "&Maximize window", "&Exit"]]], key="reader_menu")
         ],
         [
-            [sg.Column([[sg.Image(key="reader_page_img", enable_events=True)]], size=(650, 600), scrollable=True, key="reader_page_img_col")],
+            [sg.Column([[sg.Image(key="reader_page_img", enable_events=True)]], size=(800, 600), scrollable=True, key="reader_page_img_col")],
             [sg.HSeparator()],
             [
                 sg.Button("prev ch.", key="reader_go_prev_ch"),
@@ -23,8 +23,12 @@ def reader_make_window():
     ]
 
     wind = sg.Window("Reader", layout=layout, element_justification="c", finalize=True)
-    wind.bind("<Right>", "reader_go_fwd")
-    wind.bind("<Left>", "reader_go_back")
+    wind.bind("<Shift-Right>", "reader_go_fwd")
+    wind.bind("<Shift-Left>", "reader_go_back")
+    wind.bind("<Right>", "reader_scroll_right")
+    wind.bind("<Left>", "reader_scroll_left")
+    wind.bind("<Down>", "reader_scroll_down")
+    wind.bind("<Up>", "reader_scroll_up")
     return wind
     
 def jump(max_page: int):
