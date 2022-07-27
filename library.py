@@ -2,6 +2,7 @@ import PySimpleGUI as sg
 import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
+import time
 
 import mangakatana
 
@@ -10,9 +11,9 @@ def init_db():
     cur = conn.cursor()
     return (conn, cur)
 
-def add(url):
+def add(url, ch=0, p=0):
     conn, cur = init_db()
-    cur.execute("INSERT INTO reading_list VALUES(?, 1, 0);", (url,))
+    cur.execute("INSERT INTO reading_list VALUES(?, ?, ?);", (url, ch, p))
     conn.commit()
 
 def update(url, ch, p):
@@ -26,7 +27,7 @@ def is_in_lib(url):
     rows = cur.fetchall()
     return (len(rows) > 0, rows[0] if len(rows) > 0 else None)
 
-def make_window():
+def make_window_layout():
     _, cur = init_db()
     cur.execute("SELECT * FROM reading_list;")
     rows = cur.fetchall()
@@ -36,12 +37,17 @@ def make_window():
 
     treedata = sg.TreeData()
     
+    rowdict = {}
+
     for row in rows:
         info = mangakatana.get_manga_info(row[0])
         thumbnail_urls.append(info["cover_url"])
         infos.append(info)
+        rowdict.setdefault(row, info)
 
     thumbnails = mangakatana.download_images(thumbnail_urls)
+
+    [i for i, x in enumerate(rows)].sort()
 
     for i, row in enumerate(rows):
         buf = BytesIO(thumbnails[i])
@@ -51,7 +57,7 @@ def make_window():
         im.save(outbuf, "png")
         treedata.insert("", i,
             "",
-            [infos[i]["title"], "{}/{}".format(str(row[1]).zfill(2), "??" if infos[i]["status"] == "Ongoing" else str(len(infos[i]["chapters"])).zfill(2)), infos[i]["chapters"][-1]["date"]],
+            [infos[i]["title"], "{}/{}".format(str(int(row[1]) + 1).zfill(2), "??" if infos[i]["status"] == "Ongoing" else str(len(infos[i]["chapters"])).zfill(2)), infos[i]["chapters"][-1]["date"]],
             outbuf.getvalue()
             )
         buf.close()
@@ -71,5 +77,11 @@ def make_window():
         ]
     ]
     
-    w = sg.Window("Reading list", layout=layout, finalize=True)
-    return w
+    return layout
+
+def start_reading(title):
+    layout = [
+        [sg.Text("Would you like to add {} to your reading list?".format(title))],
+        [sg.Button("Yes", key="reading_start_yes"), sg.Button("No", key="reading_start_no")]
+    ]
+    return sg.Window("", layout, modal=True, finalize=True, disable_minimize=True, disable_close=True)

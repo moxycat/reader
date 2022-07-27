@@ -1,3 +1,5 @@
+from io import BytesIO
+from datetime import datetime
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
@@ -5,6 +7,9 @@ import textwrap
 
 import mangakatana
 import reader, chapter_view, library
+
+def myround(x, prec=2, base=.05):
+  return round(base * round(float(x)/base),prec)
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10))
@@ -55,7 +60,8 @@ search_controls = [
 ]
 
 layout = [
-    [sg.Column(search_controls, visible=True)]
+    [sg.Column(search_controls, visible=True)],
+    [sg.StatusBar("No activity", enable_events=True, key="search_statusbar", size=(50, 1))]
 ]
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
@@ -70,6 +76,9 @@ chapter_index = 0
 page_index = 0
 vscroll_perc = 0.0
 hscroll_perc = 0.0
+is_in_library = False
+download_start_time = 0
+download_end_time = 0
 
 def set_page():
     global wreader, images, page_index, chapter_index, vscroll_perc, hscroll_perc
@@ -103,13 +112,30 @@ def set_page():
     wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
     #wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
 
+def reader_get_images():
+    global page_index, image_urls, images, chapter_index, wind, wreader, download_start_time
+    page_index = 0
+    
+    image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
+    download_start_time = datetime.utcnow().timestamp()
+    images = mangakatana.download_images(image_urls)
+
+def open_reader():
+    global wind, wreader
+    wind.hide()
+    if wreader is None: wreader = reader.reader_make_window()
+    else: wreader.bring_to_front()
+
 while True:
     w, e, v = sg.read_all_windows()
     print(e)
     if w == wind and e == sg.WIN_CLOSED: break
     if w == wreader and e == sg.WIN_CLOSED:
         wreader.close()
+        wreader = None
+        wind.refresh()
         wind.un_hide()
+    
     if e == "search":
         #results.clear()
         query = v["search_bar"]
@@ -119,8 +145,11 @@ while True:
             continue
         wind["search_status"].update("Searching...")
         wind.refresh()
-        results = mangakatana.search(query, mode)
-        print(results)
+        wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
+        
+    if e == "search_got_results":
+        results = v["search_got_results"]
+        #print(results)
         if results is None:
             wind["search_status"].update("Found nothing.")
             continue
@@ -128,11 +157,16 @@ while True:
         l = len(results)
         wind["search_status"].update("Found {} result{}.".format(l, "s" if l > 1 else ""))
         wind["book_list"].update(names)
-    
+
     if e == "book_list":
-        ix = wind["book_list"].get_indexes()[0]
+        try:
+            ix = wind["book_list"].get_indexes()[0]
+        except: continue
         url = results[ix]["url"]
-        info = mangakatana.get_manga_info(url)
+        wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
+
+    if e == "book_list_got_info":
+        info = v["book_list_got_info"]
         im = Image.open(requests.get(info["cover_url"], stream=True).raw)
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
@@ -152,10 +186,13 @@ while True:
         wind["preview_update"].update("Updated at:     " + info["chapters"][-1]["date"])
         wind["preview_desc"].update("\n".join(textwrap.wrap(info["description"], width=50)), visible=True)
         
-        isin, rows = library.is_in_lib(info["url"])
-        if isin:
-            chapter_index = int(rows[1]) - 1
-            wind["read_continue"].update(text="[{}]".format(info["chapters"][chapter_index]["name"]), visible=True)
+        is_in_library, rows = library.is_in_lib(info["url"])
+        if is_in_library:
+            chapter_index = int(rows[1]) + (1 if int(rows[1]) < len(info["chapters"]) else 0)
+            wind["read_continue"].update(
+                text="[{}]".format(info["chapters"][chapter_index]["name"]),
+                visible=True)
+        else: wind["read_continue"].update(visible=False)
         wind["read_latest"].update(visible=True)
         wind["details"].update(visible=True)
         wind.refresh()
@@ -178,52 +215,40 @@ while True:
     if e == "details_chapters":
         ix = wdetails["details_chapters"].get_indexes()[0]
         chapter_index = len(info["chapters"]) - ix - 1
-        page_index = 0
-        
-        image_urls.clear()
-        images.clear()
-
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = mangakatana.download_images(image_urls)
-        
+        wind["search_statusbar"].update("Downloading chapter...")
+        wind.refresh()
+        wind.perform_long_operation(lambda: reader_get_images(), "open_reader")
         wdetails.close()
-        wind.hide()
-        if wreader is None:
-            wreader = reader.reader_make_window()
-        else:
-            wreader.bring_to_front()
-        set_page()
 
-    # loader + downloader
     if e == "read_latest":
         chapter_index = len(info["chapters"]) - 1
-        page_index = 0
-        
-        image_urls.clear()
-        images.clear()
-
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = mangakatana.download_images(image_urls)
-        
-        wind.hide()
-        if wreader is None:
-            wreader = reader.reader_make_window()
-        else: wreader.bring_to_front()
-        set_page()
+        wind["search_statusbar"].update("Downloading chapter...")
+        wind.refresh()
+        wind.perform_long_operation(lambda: reader_get_images(), "open_reader")
     
     if e == "read_continue":
-        page_index = 0
-        
-        image_urls.clear()
-        images.clear()
+        wind["search_statusbar"].update("Downloading chapter...")
+        wind.refresh()
+        wind.perform_long_operation(lambda: reader_get_images(), "open_reader")
 
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = mangakatana.download_images(image_urls)
-        
-        wind.hide()
-        if wreader is None:
-            wreader = reader.reader_make_window()
-        else: wreader.bring_to_front()
+    if e == "reader_go_next_ch":
+        if chapter_index + 1 >= len(info["chapters"]): continue
+        else: chapter_index += 1
+        if page_index == len(images) - 1:
+            if is_in_library: library.update(info["url"], chapter_index - 1, page_index)
+            else: library.add(info["url"], chapter_index - 1, page_index)
+        wind.perform_long_operation(lambda: reader_get_images(), "open_reader")
+
+    if e == "reader_go_prev_ch":
+        if chapter_index - 1 < 0: continue
+        else: chapter_index -= 1
+        wind.perform_long_operation(lambda: reader_get_images(), "open_reader")
+    
+    if e == "open_reader":
+        download_end_time = datetime.utcnow().timestamp()
+        wind["search_statusbar"].update(f"Downloaded chapter! {(download_end_time - download_start_time)/len(images)} sec./page")
+        wind.refresh()
+        open_reader()
         set_page()
 
     if e == "reader_page_num":
@@ -236,25 +261,29 @@ while True:
     if e == "reader_scroll_down":
         if vscroll_perc + 0.05 <= 1.0: vscroll_perc += 0.05
         else: continue
-        vscroll_perc = round(vscroll_perc, 2)
+        vscroll_perc = myround(vscroll_perc, 2)
+        print(vscroll_perc)
         wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
 
     if e == "reader_scroll_up":
         if vscroll_perc - 0.05 >= 0.0: vscroll_perc -= 0.05
         else: continue
-        vscroll_perc = round(vscroll_perc, 2)
+        vscroll_perc = myround(vscroll_perc, 2)
+        print(vscroll_perc)
         wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
 
     if e == "reader_scroll_left":
         if hscroll_perc - 0.05 >= 0: hscroll_perc -= 0.05
         else: continue
-        hscroll_perc = round(hscroll_perc, 2)
+        hscroll_perc = myround(hscroll_perc, 2)
+        print(hscroll_perc)
         wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
 
     if e == "reader_scroll_right":
         if hscroll_perc + 0.05 >= 0: hscroll_perc += 0.05
         else: continue
-        hscroll_perc = round(hscroll_perc, 2)
+        hscroll_perc = myround(hscroll_perc, 2)
+        print(hscroll_perc)
         wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
 
     if e == "reader_go_fwd":
@@ -262,9 +291,13 @@ while True:
         if page_index + 1 > max_page - 1: continue
         page_index += 1
         set_page()
+        if chapter_index == len(info["chapters"]) - 1 and page_index == max_page - 1:
+            if is_in_library:
+                library.update(info["url"], chapter_index - 1, page_index)
+            else:
+                library.add(info["url"], chapter_index - 1, page_index)
 
     if e == "reader_go_back":
-        max_page = int(wreader["reader_page_num"].get().split("/")[1])
         if page_index - 1 < 0: continue
         page_index -= 1
         set_page()
@@ -274,47 +307,37 @@ while True:
         set_page()
 
     if e == "reader_go_end":
-        page_index = max_page - 1
+        page_index = len(images) - 1
         set_page()
 
-    if e == "reader_go_next_ch":
-        if chapter_index + 1 >= len(info["chapters"]):
-            continue
-        else: chapter_index += 1
-        page_index = 0
-        image_urls.clear()
-        images.clear()
-        
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = mangakatana.download_images(image_urls)
-        set_page()
-
-    if e == "reader_go_prev_ch":
-        if chapter_index - 1 < 0:
-            continue
-        else: chapter_index -= 1
-        page_index = 0
-        image_urls.clear()
-        images.clear()
-        
-        image_urls = mangakatana.get_manga_chapter_images(info["chapters"][chapter_index]["url"])
-        images = mangakatana.download_images(image_urls)
-        set_page()
-
+    
     if e == "Maximize window":
         wreader.Maximize()
+    
+    if e == "Save screenshot":
+        filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
+        default_extension="png", file_types=(("Image", "*.png png"),), save_as=True,
+        default_path=f"{page_index + 1}.png")
+        im = Image.open(BytesIO(images[page_index]))
+        im.save(filename, "png")
+        im.close()
     
     if e == "Reading list":
         if wreadlist is not None:
             wreadlist.un_hide()
             wreadlist.bring_to_front()
-        else: wreadlist = library.make_window()
+        else:
+            wind.perform_long_operation(library.make_window_layout, "lib_window_made")
+
+    if e == "lib_window_made":
+        lo = v["lib_window_made"]
+        wreadlist = sg.Window("Reading list", lo, finalize=True)
     
     if e == "lib_tree":
         print(v["lib_tree"])
     
     if w == wreadlist and e == sg.WIN_CLOSED:
-        wreadlist.hide()
+        wreadlist.close()
         wreadlist = None
         
 wind.close()

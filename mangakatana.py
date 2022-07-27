@@ -2,17 +2,20 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+import threading
 import requests as r
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from PIL import Image
 import asyncio, aiohttp
 import re
+import multiprocessing
 
 def get_manga_info(url: str) -> dict:
     resp = r.get(url)
-    if resp.status_code != 200: return None
+    if resp.status_code != 200: return {}
     soup = BeautifulSoup(resp.text, "lxml")
     
     link = soup.find("link", {"rel": "canonical"}).get("href")
@@ -58,7 +61,7 @@ def search(query: str, search_by: int = 0) -> list:
     page = 1
     url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
     resp = r.get(url)
-    if resp.status_code != 200: return None
+    if resp.status_code != 200: return []
     soup = BeautifulSoup(resp.text, "lxml")
 
     nresults = soup.find("div", {"class": "widget-title"}).find("span").text.strip()
@@ -94,6 +97,12 @@ def search(query: str, search_by: int = 0) -> list:
     
     return results
 
+def count_chapters(chapters: list) -> int:
+    count = 0
+    for ch in chapters:
+        ret = re.match(".*[Cc]hapter (.+)\s*:.+")
+        print(ret)
+
 def get_manga_chapter_images(url: str) -> list:
     resp = r.get(url)
     if resp.status_code != 200: return None
@@ -103,7 +112,7 @@ def get_manga_chapter_images(url: str) -> list:
     return images
 
 def download_images(urls: list) -> list:
-    sem = asyncio.BoundedSemaphore(10)
+    sem = asyncio.BoundedSemaphore(len(urls))
     results = [None] * len(urls)
     async def fetch(url: str, i: int):
         async with sem, aiohttp.ClientSession() as sesh:
@@ -117,8 +126,10 @@ def download_images(urls: list) -> list:
                 im.close()
                 buf.close()
                 outbuf.close()
+                print(f"{i} done")
     
-    loop = asyncio.get_event_loop()
-    tasks = [loop.create_task(fetch(a[0], a[1])) for a in zip(urls, range(len(urls)))]
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]
     loop.run_until_complete(asyncio.wait(tasks))
     return results
