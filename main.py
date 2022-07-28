@@ -111,6 +111,7 @@ def set_page():
     #hscroll_perc = 0.0
     wreader["reader_page_img_col"].Widget.canvas.yview_moveto(vscroll_perc)
     #wreader["reader_page_img_col"].Widget.canvas.xview_moveto(hscroll_perc)
+    wreader.write_event_value("opened_page", "")
 
 def reader_get_images():
     global page_index, image_urls, images, chapter_index, wind, wreader, download_start_time
@@ -148,7 +149,7 @@ while True:
         wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
         
     if e == "search_got_results":
-        results = v["search_got_results"]
+        results = v[e]
         #print(results)
         if results is None:
             wind["search_status"].update("Found nothing.")
@@ -166,7 +167,7 @@ while True:
         wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
 
     if e == "book_list_got_info":
-        info = v["book_list_got_info"]
+        info = v[e]
         im = Image.open(requests.get(info["cover_url"], stream=True).raw)
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
@@ -310,6 +311,11 @@ while True:
         page_index = len(images) - 1
         set_page()
 
+    if e == "opened_page":
+        im = Image.open(BytesIO(images[page_index]))
+        print(wreader.size)
+        wreader.TKroot.maxsize(im.width + 45, im.height + 70)
+        im.close()
     
     if e == "Maximize window":
         wreader.Maximize()
@@ -330,14 +336,22 @@ while True:
             wind.perform_long_operation(library.make_window_layout, "lib_window_made")
 
     if e == "lib_window_made":
-        lo = v["lib_window_made"]
+        lo = v[e]
         wreadlist = sg.Window("Reading list", lo, finalize=True)
     
     if e == "lib_tree":
-        print(v["lib_tree"])
+        print(v[e])
     
     if w == wreadlist and e == sg.WIN_CLOSED:
         wreadlist.close()
         wreadlist = None
+    
+    if e == "reader_resized":
+        # def_size = (845, 670) # 45 wpad, 70 hpad
+        im = Image.open(BytesIO(images[page_index]))
+        #print(wreader.size)
+        #wreader.TKroot.maxsize(im.width + 45, im.height + 70)
+        opts = {"width": wreader.size[0] - 45, "height": wreader.size[1] - 70}
+        wreader["reader_page_img_col"].Widget.canvas.configure(**opts)
         
 wind.close()
