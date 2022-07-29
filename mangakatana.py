@@ -3,6 +3,7 @@ mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
 from concurrent.futures import ThreadPoolExecutor
+from email.mime import image
 from io import BytesIO
 import threading
 import requests as r
@@ -112,7 +113,7 @@ def get_manga_chapter_images(url: str) -> list:
     return images
 
 def download_images(urls: list) -> list:
-    sem = asyncio.BoundedSemaphore(len(urls))
+    sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
     async def fetch(url: str, i: int):
         async with sem, aiohttp.ClientSession() as sesh:
