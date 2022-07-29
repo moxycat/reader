@@ -192,6 +192,8 @@ while True:
         
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
+        wloading = popup_loading()
+        wloading.read(timeout=0)
         wind.perform_long_operation(lambda: reader.set_chapter(ix), "open_reader")
         wdetails.close()
 
@@ -199,6 +201,8 @@ while True:
         ix = len(reader.book_info["chapters"]) - 1
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
+        wloading = popup_loading()
+        wloading.read(timeout=0)
         wind.perform_long_operation(lambda: reader.set_chapter(ix), "open_reader")
     
     if e == "read_continue":
@@ -210,7 +214,7 @@ while True:
     
     if e == "open_reader":
         download_end_time = datetime.utcnow().timestamp()
-        wloading.close()
+        if wloading is not None: wloading.close()
         set_status(
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(reader.images)} pages ({round(float(len(reader.images))/(download_end_time - download_start_time), 2)} page/s)")
         reader.make_window()
