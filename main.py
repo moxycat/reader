@@ -260,10 +260,11 @@ while True:
         #wind.hide()
 
     if e == "Save screenshot":
+        ix = reader_windows.index(w)
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
         default_extension="png", file_types=(("Image", "*.png png"),), save_as=True,
-        default_path=f"{reader.page_index + 1}.png")
-        im = Image.open(BytesIO(reader.images[reader.page_index]))
+        default_path=f"{readers[ix].page_index + 1}.png")
+        im = Image.open(BytesIO(readers[ix].images[readers[ix].page_index]))
         im.save(filename, "png")
         im.close()
     
