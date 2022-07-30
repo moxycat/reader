@@ -7,9 +7,8 @@ import requests
 import textwrap
 
 import mangakatana
-import reader, chapter_view, library, settings
-
-from v2.reader import Reader # experimental
+import chapter_view, library, settings
+from reader import Reader
 
 def myround(x, prec=2, base=.05):
   return round(base * round(float(x)/base),prec)
@@ -20,13 +19,15 @@ sg.set_options(font=("Consolas", 10))
 def popup_loading():
     return sg.Window("", layout=[
         [
-            sg.Text("Loading...")
+            sg.Text("Loading...", font=("Consolas", 14))
         ]
     ], modal=True, no_titlebar=True, finalize=True)
 
+menu = [["Readers", []], ["&Library", ["Reading list", "Favourites"]], ["&Settings", ["&Preferences", "&Help"]]]
+
 search_controls = [
     [
-        sg.Menu([["File", ["Open reader"]], ["&Library", ["Reading list", "Favourites"]], ["&Settings", ["&Preferences", "&Help"]]], key="menu")
+        sg.Menu(menu, key="menu")
     ],
     [
         sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white"),
@@ -79,6 +80,8 @@ library.init_db()
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
 
 reader = Reader()
+readers = []
+#active_reader_index = -1
 
 wdetails = None
 wreadlist = None
@@ -97,11 +100,31 @@ def set_status(text):
 while True:
     w, e, v = sg.read_all_windows()
     print(e)
-    if w == reader.window:
+    reader_windows = [r.window for r in readers]
+    if w in reader_windows:
+        ix = reader_windows.index(w)
+        if e == "reader_loaded_chapter":
+            menu[0][1][ix] = "{} - {}".format(readers[ix].book_info["title"],
+                readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"])
+            wind["menu"].update(menu)
+        
+        if e == "reader_mini":
+            readers[ix].window.hide()
+        
         if e == sg.WIN_CLOSED:
             wind.un_hide()
-            reader.window.close()
-        else: reader.handle(e)
+            readers[ix].window.close()
+            del readers[ix]
+            del menu[0][1][ix]
+            wind["menu"].update(menu)
+        else:
+            readers[ix].handle(e)
+    
+    if e in menu[0][1]:
+        ix = menu[0][1].index(e)
+        readers[ix].window.un_hide()
+        readers[ix].window.bring_to_front()
+
     if w == wind and e == sg.WIN_CLOSED: break
     
     if e == "search":
@@ -137,8 +160,7 @@ while True:
 
     if e == "book_list_got_info":
         set_status("Fetched book information!")
-        info = v[e]
-        reader.set_book_info(info)
+        reader.set_book_info(v[e])
         im = Image.open(requests.get(reader.book_info["cover_url"], stream=True).raw)
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
@@ -189,37 +211,53 @@ while True:
     if e == "details_chapters":
         ix = wdetails["details_chapters"].get_indexes()[0]
         ix = len(reader.book_info["chapters"]) - ix - 1
+
+        readers.append(Reader(reader.book_info))
+        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
+            readers[-1].book_info["chapters"][ix]["name"]))
+        wind["menu"].update(menu)
         
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
         wloading = popup_loading()
         wloading.read(timeout=0)
-        wind.perform_long_operation(lambda: reader.set_chapter(ix), "open_reader")
+        wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
         wdetails.close()
 
     if e == "read_latest":
+        wind["menu"].update(menu)
         ix = len(reader.book_info["chapters"]) - 1
+
+        readers.append(Reader(reader.book_info))
+        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
+            readers[-1].book_info["chapters"][ix]["name"]))
+
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
         wloading = popup_loading()
         wloading.read(timeout=0)
-        wind.perform_long_operation(lambda: reader.set_chapter(ix), "open_reader")
+        wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
     
     if e == "read_continue":
+        readers.append(Reader(reader.book_info))
+        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
+            readers[-1].book_info["chapters"][ix]["name"]))
+        wind["menu"].update(menu)
+        #print(menu[0])
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
         wloading = popup_loading()
         wloading.read(timeout=0)
-        wind.perform_long_operation(lambda: reader.set_chapter(), "open_reader")
+        wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
     
     if e == "open_reader":
         download_end_time = datetime.utcnow().timestamp()
         if wloading is not None: wloading.close()
         set_status(
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(reader.images)} pages ({round(float(len(reader.images))/(download_end_time - download_start_time), 2)} page/s)")
-        reader.make_window()
-        reader.set_page(0)
-        wind.hide()
+        readers[-1].make_window()
+        readers[-1].set_page(0)
+        #wind.hide()
 
     if e == "Save screenshot":
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
