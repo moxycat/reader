@@ -160,7 +160,8 @@ def search(query, tr: TreeRtClick):
         for (ix, id) in removed:
             tr.Widget.move(id, "", ix)
         return
-
+        
+    removed.clear()
     for id, url in tr.IdToKey.items():
         if url == "": continue
         if query not in book_info[url]["info"]["title"].lower():
