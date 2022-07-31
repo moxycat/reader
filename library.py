@@ -52,7 +52,7 @@ def update_book_info():
 
     book_info = dict(sorted(book_info.items(), key=lambda item: datetime.strptime(item[1]["info"]["chapters"][-1]["date"], "%b-%d-%Y"), reverse=True))
 
-def make_window_layout():
+def make_window():
     global conn, cur, book_info
     update_book_info()
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
@@ -90,7 +90,6 @@ def make_window_layout():
             )
         ]
     ]
-    
     return layout
 
 def start_reading(title):
@@ -153,21 +152,27 @@ def key_to_id(tree, key):
         if v == key: return k
     return None
 
+original = []
 removed = []
+
+def get_original(tr: TreeRtClick):
+    original.clear()
+    for id, url in tr.IdToKey.items():
+        if url == "": continue
+        ix = tr.Widget.index(id)
+        original.append((ix, id))
+    
+def clear_search(tr: TreeRtClick):
+    for ix, id in original:
+        tr.Widget.move(id, "", ix)
+
 def search(query, tr: TreeRtClick):
-    global book_info
-    if query == "":
-        for (ix, id) in removed:
-            tr.Widget.move(id, "", ix)
-        return
-        
     removed.clear()
     for id, url in tr.IdToKey.items():
         if url == "": continue
         if query not in book_info[url]["info"]["title"].lower():
             ix = tr.Widget.index(id)
             removed.append((ix, id))
-    
     print(removed)
 
     for _, id in removed:

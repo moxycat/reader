@@ -295,19 +295,20 @@ while True:
         else:
             wloading = popup_loading()
             wloading.read(timeout=0)
-            wind.perform_long_operation(library.make_window_layout, "lib_window_made")
+            wind.perform_long_operation(library.make_window, "lib_window_made")
 
     if e == "lib_window_made":
         if wloading is not None: wloading.close()
-        lo = v[e]
-        wreadlist = sg.Window("Reading list", lo, finalize=True)
-        wreadlist["lib_tree"].bind("<Double-Button-1>", "_open_book")
+        layout = v[e]
+        wreadlist = sg.Window("Reading list", layout, finalize=True)
         # idk why this happens but when you double click an event gets generated for the tree AND the double click but they get merged into one
-        #wreadlist["lib_tree"].bind("<Button-3>", lambda event, element=wreadlist["lib_tree"]: library.right_click_menu_callback(event, element))
+        wreadlist["lib_tree"].bind("<Double-Button-1>", "_open_book")
+        library.get_original(wreadlist["lib_tree"])
     
     if e == "lib_search":
         q = v["lib_search_query"]
-        print(q)
+        library.clear_search(wreadlist["lib_tree"])
+        if q == "": continue
         library.search(q, wreadlist["lib_tree"])
 
     if w == wreadlist and e == "Edit chapter":
