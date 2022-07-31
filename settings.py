@@ -14,7 +14,7 @@ def make_window():
     read_settings()
     layout = [
         [sg.Frame("UI", [
-            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value="Light" if __settings["ui"]["theme"] == "light" else "Dark", key="settings_ui_theme", readonly=True, background_color="white")]
+            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=__settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")]
         ]
         )],
         [

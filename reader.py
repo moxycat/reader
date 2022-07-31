@@ -1,7 +1,9 @@
 import PySimpleGUI as sg
 from io import BytesIO
 from PIL import Image
+
 import mangakatana
+import bluefilter
 
 def popup_loading():
     return sg.Window("", layout=[
@@ -39,6 +41,7 @@ class Reader:
         if chapter_index != -1: self.chapter_index = chapter_index
         image_urls = mangakatana.get_manga_chapter_images(self.book_info["chapters"][self.chapter_index]["url"])
         self.images = mangakatana.download_images(image_urls)
+        #self.images = bluefilter.apply_filter(self.images, 85)
         self.max_page_index = len(self.images) - 1
 
     def check_if_mini(self, event):

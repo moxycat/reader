@@ -5,6 +5,7 @@ Compliant with the website up until at least 2022-07-23
 from concurrent.futures import ThreadPoolExecutor
 from email.mime import image
 from io import BytesIO
+from multiprocessing.dummy import current_process
 import threading
 import requests as r
 from bs4 import BeautifulSoup
@@ -97,6 +98,50 @@ def search(query: str, search_by: int = 0) -> list:
         books = soup.find("div", {"id": "book_list"}).find_all("div", {"class": "item"})
     
     return results
+
+def search_page_count(query: str, search_by: int = 0) -> int:
+    query = quote_plus(query)
+    template_url = "https://mangakatana.com/page/{}?search={}&search_by={}"
+    current_page = 1
+    while True:
+        url = template_url.format(current_page, query, "book_name" if search_by == 0 else "author")
+        resp = r.get(url)
+        if resp.status_code == 404: break
+        else: current_page += 1
+    return current_page - 1
+
+def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
+    query = quote_plus(query)
+    template_url = "https://mangakatana.com/page/{}?search={}&search_by={}"
+    url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
+    resp = r.get(url)
+    if resp.status_code != 200: return ([], 0)
+    soup = BeautifulSoup(resp.text, "lxml")
+
+    nresults = soup.find("div", {"class": "widget-title"}).find("span").text.strip()
+    if not nresults.startswith("Search"): nresults = 1
+    else: nresults = int(nresults.removeprefix("Search results (").removesuffix(")"))
+    added = 0
+
+    book_list = soup.find("div", {"id": "book_list"})
+    if book_list is None:
+        cover_url = soup.find("div", {"class": "cover"}).find("img").get("src")
+        title = soup.find("h1", {"class": "heading"}).text.strip()
+        link = soup.find("link", {"rel": "canonical"}).get("href")
+        return [{"title": title, "url": link, "cover_url": cover_url}]
+    
+    books = book_list.find_all("div", {"class": "item"})
+    results = []
+    
+    for book in books:
+        title = book.find("h3", {"class": "title"}).find("a").text.strip()
+        a = book.find("div", {"class": "wrap_img"}).find("a")
+        link = a.get("href")
+        cover_url = a.find("img", {"alt": "[Cover]"}).get("src")
+        results.append({"title": title, "url": link, "cover_url": cover_url})
+    
+    return (results, nresults)
+
 
 def count_chapters(chapters: list) -> int:
     count = 0

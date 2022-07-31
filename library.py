@@ -1,7 +1,9 @@
+from tkinter.tix import Tree
 import PySimpleGUI as sg
 import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
+from datetime import datetime
 
 import mangakatana
 
@@ -48,16 +50,18 @@ def update_book_info():
         info = mangakatana.get_manga_info(row[0])
         book_info.setdefault(row[0], {"ch": row[1], "p": row[2], "info": info})
 
+    book_info = dict(sorted(book_info.items(), key=lambda item: datetime.strptime(item[1]["info"]["chapters"][-1]["date"], "%b-%d-%Y"), reverse=True))
+
 def make_window_layout():
     global conn, cur, book_info
-    #init_db()
     update_book_info()
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
-    print(thumbnail_urls)
+    #print(thumbnail_urls)
     thumbnails = mangakatana.download_images(thumbnail_urls)
 
     treedata = sg.TreeData()
     for i, (k, v) in enumerate(book_info.items()):
+        #if search_query not in v["info"]["title"]: continue
         buf = BytesIO(thumbnails[i])
         outbuf = BytesIO()
         im = Image.open(buf)
@@ -71,16 +75,16 @@ def make_window_layout():
         buf.close()
         outbuf.close()
     
-    title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) + 20
-    col0_width = 50
+    title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) #+ 20
     layout = [
         [
             sg.Menu([["Window", ["Refresh", "Close"]]], key="lib_menu")
         ],
+        [sg.Input(key="lib_search_query", size=(title_max_len, 1)), sg.Button("⌕", key="lib_search", bind_return_key=True)],
         [
             TreeRtClick(
                 data=treedata, headings=["Title", "Progress", "Last update"], col0_heading="",
-                key="lib_tree", row_height=50, num_rows=5, enable_events=True,
+                key="lib_tree", row_height=50, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Edit chapter", "Remove from list"]]
             )
@@ -101,9 +105,9 @@ def start_reading(title):
     w.close()
     return ans
 
-def edit_chapter_progress(url, max_ch):
-    #init_db()
-    update_book_info()
+def edit_chapter_progress(url):
+    #update_book_info()
+    max_ch = len(book_info[url]["info"]["chapters"])
     layout = [
         [sg.Button("-", key="lib_edit_minus"), sg.Input(int(book_info[url]["ch"]) + 1, key="lib_edit_progress_chapter", size=(len(str(max_ch)), 1)), sg.Text("/", pad=0), sg.Input(max_ch, disabled=True, background_color="white", size=(len(str(max_ch)), 1)), sg.Button("+", key="lib_edit_plus")],
         [sg.Button("Save", key="lib_edit_save"), sg.Button("Cancel", key="lib_edit_cancel")]
@@ -143,3 +147,27 @@ def edit_chapter_progress(url, max_ch):
                 update(url, val - 1, 0)
             break
     w.close()
+
+def key_to_id(tree, key):
+    for k, v in tree.IdToKey.items():
+        if v == key: return k
+    return None
+
+removed = []
+def search(query, tr: TreeRtClick):
+    global book_info
+    if query == "":
+        for (ix, id) in removed:
+            tr.Widget.move(id, "", ix)
+        return
+
+    for id, url in tr.IdToKey.items():
+        if url == "": continue
+        if query not in book_info[url]["info"]["title"].lower():
+            ix = tr.Widget.index(id)
+            removed.append((ix, id))
+    
+    print(removed)
+
+    for _, id in removed:
+        tr.Widget.detach(id)
