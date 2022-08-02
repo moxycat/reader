@@ -168,12 +168,18 @@ while True:
     if e == "book_list_got_info":    
         set_status("Fetched book information!")
         reader.set_book_info(v[e])
-        im = Image.open(requests.get(reader.book_info["cover_url"], stream=True).raw)
-        im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
-        wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
-        wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)))
-        wind["preview_title"].set_tooltip("\n".join(reader.book_info["alt_names"]))
+        try:
+            im = Image.open(requests.get(reader.book_info["cover_url"], stream=True).raw)
+            im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
+            wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
+            wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)))
+            wind["preview_title"].set_tooltip("\n".join(reader.book_info["alt_names"]))
+        except:
+            wind["preview_title"].update(reader.book_info["title"])
         #wind["preview_alt_names"].update("Alt names(s): " + ";\n                     ".join(reader.book_info["alt_names"]))
+        
+        print(reader.book_info["chapters"])
+        
         wind["preview_author"].update("Author:         " + reader.book_info["author"])
         genres = ""
         for i, g in enumerate(reader.book_info["genres"]):

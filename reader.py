@@ -3,7 +3,7 @@ from io import BytesIO
 from PIL import Image
 
 import mangakatana
-import bluefilter
+#import bluefilter
 
 def popup_loading():
     return sg.Window("", layout=[

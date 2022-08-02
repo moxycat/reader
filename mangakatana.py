@@ -39,7 +39,7 @@ def get_manga_info(url: str) -> dict:
         chapters.append(
             {
                 "name": a.text.strip(),
-                "url": a.get("href"),
+                "url": a.get("href") + "?sv=mk",
                 "date": tr.find("div", {"class": "update_time"}).text.strip()
             }
         )
