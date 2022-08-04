@@ -2,18 +2,13 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
-from concurrent.futures import ThreadPoolExecutor
-from email.mime import image
 from io import BytesIO
-from multiprocessing.dummy import current_process
-import threading
 import requests as r
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 from PIL import Image
 import asyncio, aiohttp
 import re
-import multiprocessing
 
 def get_manga_info(url: str) -> dict:
     resp = r.get(url)
@@ -95,7 +90,16 @@ def search(query: str, search_by: int = 0) -> list:
         resp = r.get(url)
         if resp.status_code != 200: return None
         soup = BeautifulSoup(resp.text, "lxml")
-        books = soup.find("div", {"id": "book_list"}).find_all("div", {"class": "item"})
+        #books = soup.find("div", {"id": "book_list"}).find_all("div", {"class": "item"})
+        book_list = soup.find("div", {"id": "book_list"})
+        if book_list is None:
+            cover_url = soup.find("div", {"class": "cover"}).find("img").get("src")
+            title = soup.find("h1", {"class": "heading"}).text.strip()
+            link = soup.find("link", {"rel": "canonical"}).get("href")
+            results.append({"title": title, "url": link, "cover_url": cover_url})
+            return results
+        else:
+            books = book_list.find_all("div", {"class": "item"})
     
     return results
 
@@ -141,13 +145,6 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
         results.append({"title": title, "url": link, "cover_url": cover_url})
     
     return (results, nresults)
-
-
-def count_chapters(chapters: list) -> int:
-    count = 0
-    for ch in chapters:
-        ret = re.match(".*[Cc]hapter (.+)\s*:.+")
-        print(ret)
 
 def get_manga_chapter_images(url: str) -> list:
     resp = r.get(url)

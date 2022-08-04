@@ -1,4 +1,5 @@
 import PySimpleGUI as sg
+import tkinter as tk
 from io import BytesIO
 from PIL import Image
 
@@ -17,17 +18,17 @@ class ReaderImageDownloadError(ReaderError): pass
 class ReaderInfoError(ReaderError): pass
 
 class Reader:
-    window = None
-    popup_window = None
-    images = []
-    book_info = {}
-    chapter_index = 0
-    max_chapter_index = 0
-    max_page_index = 0
-    page_index = 0
-    current_image = None
-    vscroll = 0
-    hscroll = 0
+    window = None # window object
+    popup_window = None # popup window object (for showing the loading popup)
+    updated = False # does this book get updated in the library
+    images = [] # array of each page's image data
+    book_info = {} # info about book
+    chapter_index = 0 # current chapter's index
+    max_chapter_index = 0 # ...
+    max_page_index = 0 # ...
+    page_index = 0 # current page's index
+    vscroll = 0 # vertical scroll position
+    hscroll = 0 # horizontal scroll position
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
@@ -49,13 +50,21 @@ class Reader:
         if self.window.TKroot.state() == "iconic":
             self.window.write_event_value("reader_mini", "")
 
+    def mw_vscroll(self, ev):
+        direction = int(-1 * (ev.delta / 120)) # 1 = down, -1 = up
+        self.set_vscroll(direction * 0.05)
+    
+    def mw_hscroll(self, ev):
+        direction = int(-1 * (ev.delta / 120)) # 1 = down, -1 = up
+        self.set_hscroll(direction * 0.05)
+
     def make_window(self):
         layout = [
             [sg.Menu([["&Tools", ["&Save screenshot", "&Maximize window", "&Exit"]]], key="reader_menu")],
             [
                 [
                     sg.Column([
-                        [sg.Image(key="reader_page_img", enable_events=True, pad=0)]
+                        [sg.Image(key="reader_page_img", enable_events=False, pad=0)]
                     ], size=(800, 600), scrollable=True, key="reader_page_img_col")
                 ],
                 [sg.HSeparator()],
@@ -82,9 +91,18 @@ class Reader:
         self.window.bind("<Left>", "reader_scroll_left")
         self.window.bind("<Down>", "reader_scroll_down")
         self.window.bind("<Up>", "reader_scroll_up")
+        self.window.TKroot.bind("<MouseWheel>", self.mw_vscroll)
+        self.window.TKroot.bind("<Shift-MouseWheel>", self.mw_hscroll)
+        self.window.bind("<Shift-Prior>", "reader_go_prev_ch")
+        self.window.bind("<Shift-Next>", "reader_go_next_ch")
         self.window.bind("<Configure>", "reader_resized")
         self.window.TKroot.bind("<Unmap>", self.check_if_mini)
         self.window.bind("<Map>", "reader_shown")
+
+        self.window["reader_page_img"].bind("<Button-1>", "_reader_go_back")
+        self.window["reader_page_img"].bind("<Button-3>", "_reader_go_fwd")
+        #self.window["reader_page_img"].bind("<Double-Button-1>", "_reader_go_home")
+        #self.window["reader_page_img"].bind("<Double-Button-3>","_reader_go_end")
     
     def refresh(self) -> None:
         self.hscroll = 0
@@ -109,11 +127,12 @@ class Reader:
         im.close()
 
     def resized(self):
-        #print(self.window.TKroot.wm_state())
+        print(self.window.TKroot.state())
         if self.window.TKroot.state() == "zoomed":
             self.window.normal()
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
+        print(self.window.size)
         opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - 70}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
 
@@ -179,10 +198,10 @@ class Reader:
 
     # does not handle close events
     def handle(self, event):
-        if event == "reader_go_fwd": self.next_page()
-        if event == "reader_go_back": self.prev_page()
-        if event == "reader_go_home": self.set_page(0)
-        if event == "reader_go_end": self.set_page(self.max_page_index)
+        if event == "reader_go_fwd" or event == "reader_page_img_reader_go_fwd": self.next_page()
+        if event == "reader_go_back" or event == "reader_page_img_reader_go_back": self.prev_page()
+        if event == "reader_go_home" or event == "reader_page_img_reader_go_home": self.set_page(0)
+        if event == "reader_go_end" or event == "reader_page_img_reader_go_end": self.set_page(self.max_page_index)
         if event == "reader_page_num": self.jump()
         if event == "reader_go_prev_ch": self.prev_chapter()
         if event == "reader_go_next_ch": self.next_chapter()
@@ -197,18 +216,3 @@ class Reader:
             self.refresh()
         #if event == "reader_mini": print(self.window.size)
         #if event == "reader_shown": print("reader shown")
-"""
-sg.theme("Default1")
-sg.set_options(font=("Consolas", 10))
-
-info = mangakatana.get_manga_info("https://mangakatana.com/manga/komi-san-wa-komyushou-desu.1921")
-rdr = Reader(info)
-rdr.set_chapter(375)
-rdr.make_window()
-rdr.set_page(0)
-while True:
-    e, v = rdr.window.read()
-    print(e)
-    if e == None: break
-    rdr.handle(e)
-"""

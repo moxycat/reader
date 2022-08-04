@@ -1,4 +1,4 @@
-from tkinter.tix import Tree
+import textwrap
 import PySimpleGUI as sg
 import sqlite3 as sql
 from io import BytesIO
@@ -57,25 +57,30 @@ def make_window():
     update_book_info()
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
     #print(thumbnail_urls)
-    thumbnails = mangakatana.download_images(thumbnail_urls)
-
+    try:
+        thumbnails = mangakatana.download_images(thumbnail_urls)
+    except:
+        thumbnails = [None] * len(thumbnail_urls)
     treedata = sg.TreeData()
     for i, (k, v) in enumerate(book_info.items()):
         #if search_query not in v["info"]["title"]: continue
-        buf = BytesIO(thumbnails[i])
+        if thumbnails[i] is not None:
+            buf = BytesIO(thumbnails[i])
+            im = Image.open(buf)
+        else:
+            im = Image.open("default_cover.png")
         outbuf = BytesIO()
-        im = Image.open(buf)
+        
         im.thumbnail((50, 50), resample=Image.BICUBIC)
         im.save(outbuf, "png")
         treedata.insert("", k,
             "",
-            [v["info"]["title"], "{}/{}".format(str(int(v["ch"]) + 1).zfill(2), "??" if v["info"]["status"] == "Ongoing" else str(len(v["info"]["chapters"])).zfill(2)), v["info"]["chapters"][-1]["date"]],
-            outbuf.getvalue()
+            [textwrap.shorten(v["info"]["title"], width=50, placeholder="..."), "{}/{}".format(str(int(v["ch"]) + 1).zfill(2), "??" if v["info"]["status"] == "Ongoing" else str(len(v["info"]["chapters"])).zfill(2)), v["info"]["chapters"][-1]["date"]],
+            outbuf.getvalue(),
             )
-        buf.close()
-        outbuf.close()
     
-    title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) #+ 20
+    #title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) // 2 #+ 20
+    title_max_len = 50
     layout = [
         [
             sg.Menu([["Window", ["Refresh", "Close"]]], key="lib_menu")
@@ -92,12 +97,12 @@ def make_window():
     ]
     return layout
 
-def start_reading(title):
+def start_reading():
     layout = [
-        [sg.Text("Would you like to add {} to your reading list?".format(title))],
+        [sg.Text("Would you like to add this book to your reading list?")],
         [sg.Button("Yes", key="reading_start_yes"), sg.Button("No", key="reading_start_no")]
     ]
-    w = sg.Window("", layout, modal=True, finalize=True, disable_minimize=True, disable_close=True)
+    w = sg.Window("", layout, modal=True, finalize=True, disable_minimize=True, disable_close=True, element_justification="c")
     ans = False
     e, v = w.read()
     if e == "reading_start_yes": ans = True

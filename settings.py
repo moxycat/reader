@@ -31,7 +31,12 @@ def make_window():
         ],
         [
             sg.Frame("Server", [
-                [sg.Text("Image source"), sg.Combo(["mangakatana.com"], __settings["server"]["source"], key="settings_server_source", readonly=True, background_color="white")]
+                [sg.Text("Image source"), sg.Combo(["def", "mk", "3"], __settings["server"]["source"], key="settings_server_source", readonly=True, background_color="white")]
+            ])
+        ],
+        [
+            sg.Frame("MAL Sync", [
+                [sg.Text("Status: disabled"), sg.Button("Authorize account", key="settings_mal_auth", disabled=True)]
             ])
         ],
         [sg.Button("Save settings", key="settings_save"), sg.Button("Cancel", key="settings_cancel")]
