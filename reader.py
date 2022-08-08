@@ -4,7 +4,7 @@ from io import BytesIO
 from PIL import Image
 
 import mangakatana
-#import bluefilter
+import settings
 
 def popup_loading():
     return sg.Window("", layout=[
@@ -65,7 +65,7 @@ class Reader:
                 [
                     sg.Column([
                         [sg.Image(key="reader_page_img", enable_events=False, pad=0)]
-                    ], size=(800, 600), scrollable=True, key="reader_page_img_col")
+                    ], size=(int(settings.settings["reader"]["w"]), int(settings.settings["reader"]["h"])), scrollable=True, key="reader_page_img_col")
                 ],
                 [sg.HSeparator()],
                 [
@@ -122,7 +122,7 @@ class Reader:
         self.window["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
         self.window["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
         im = Image.open(BytesIO(self.images[self.page_index]))
-        self.window.TKroot.maxsize(im.width + 45, im.height + 70)
+        self.window.TKroot.maxsize(im.width + 45, im.height + (70 if settings.settings["ui"]["theme"] == "Light" else 71))
         #self.window.TKroot.minsize((im.width + 45) // 2, (im.height + 70) // 2)
         im.close()
 
@@ -133,7 +133,7 @@ class Reader:
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
         print(self.window.size)
-        opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - 70}
+        opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - (70 if settings.settings["ui"]["theme"] == "Light" else 71)}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
 
     def set_page(self, n):

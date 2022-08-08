@@ -1,20 +1,19 @@
-from email.policy import default
 import PySimpleGUI as sg
 import json
 
-__settings = {}
+settings = {}
 
 def read_settings():
-    global __settings
+    global settings
     with open("settings.json", "r") as f:
-        __settings = json.loads(f.read())
+        settings = json.loads(f.read())
 
 def make_window():
-    global __settings
+    global settings
     read_settings()
     layout = [
         [sg.Frame("UI", [
-            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=__settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")]
+            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")]
         ]
         )],
         [
@@ -23,15 +22,15 @@ def make_window():
                     [sg.Text("Window width")],
                     [sg.Text("Window height")]
                 ]), sg.Column([
-                    [sg.Input(key="settings_reader_width", default_text=__settings["reader"]["w"], size=(4, 1))],
-                    [sg.Input(key="settings_reader_height", default_text=__settings["reader"]["h"], size=(4, 1))]
+                    [sg.Input(key="settings_reader_width", default_text=settings["reader"]["w"], size=(4, 1))],
+                    [sg.Input(key="settings_reader_height", default_text=settings["reader"]["h"], size=(4, 1))]
                 ])],
                 [sg.Checkbox("Auto-update chapter progress", default=True, key="settings_reader_autoupdate")]
             ])
         ],
         [
             sg.Frame("Server", [
-                [sg.Text("Image source"), sg.Combo(["def", "mk", "3"], __settings["server"]["source"], key="settings_server_source", readonly=True, background_color="white")]
+                [sg.Text("Image source"), sg.Combo(["1", "2", "3"], settings["server"]["source"], key="settings_server_source", readonly=True, background_color="white")]
             ])
         ],
         [

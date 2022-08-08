@@ -9,6 +9,7 @@ from urllib.parse import quote_plus
 from PIL import Image
 import asyncio, aiohttp
 import re
+import settings
 
 def get_manga_info(url: str) -> dict:
     resp = r.get(url)
@@ -29,12 +30,13 @@ def get_manga_info(url: str) -> dict:
     desc = soup.find("div", {"class": "summary"}).find("p").text.strip()
 
     chapters = []
+    srvr = ("" if settings.settings["server"]["source"] == "1" else "?sv=mk" if settings.settings["server"]["source"] == "2" else "?sv=3" if settings.settings["server"]["source"] == "3" else "")
     for tr in soup.find("div", {"class": "chapters"}).find("table").find("tbody").find_all("tr"):
         a = tr.find("div", {"class": "chapter"}).find("a")
         chapters.append(
             {
                 "name": a.text.strip(),
-                "url": a.get("href") + "?sv=mk",
+                "url": a.get("href") + srvr,
                 "date": tr.find("div", {"class": "update_time"}).text.strip()
             }
         )

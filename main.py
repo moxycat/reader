@@ -5,17 +5,22 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
+import os.path
 
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
 
 def myround(x, prec=2, base=.05):
-  return round(base * round(float(x)/base),prec)
+  return round(base * round(float(x) / base),prec)
 
-#print(sg.LOOK_AND_FEEL_TABLE["DefaultNoMoreNagging"])
-#sg.LOOK_AND_FEEL_TABLE["Default1"] = {'BACKGROUND': '#222222', 'TEXT': '#ffffff', 'INPUT': '1234567890', 'TEXT_INPUT': '1234567890', 'SCROLL': '1234567890', 'BUTTON': ('black', 'white'), 'PROGRESS': '1234567890', 'BORDER': 1, 'SLIDER_DEPTH': 1, 'PROGRESS_DEPTH': 0}
-sg.theme("Default1")
+settings.read_settings()
+
+if settings.settings["ui"]["theme"] == "Dark":
+    sg.theme("DarkGrey10")
+elif settings.settings["ui"]["theme"] == "Light":
+    sg.theme("Default1")
+
 sg.set_options(font=("Consolas", 10))
 
 def popup_loading():
@@ -251,12 +256,12 @@ while True:
         wdetails.close()
 
     if e == "read_latest":
-        wind["menu"].update(menu)
         ix = len(reader.book_info["chapters"]) - 1
 
         readers.append(Reader(reader.book_info))
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][ix]["name"]))
+        wind["menu"].update(menu)
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
@@ -293,7 +298,6 @@ while True:
         #wind.hide()
 
     if e == "Save screenshot":
-        ix = reader_windows.index(w)
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
         default_extension="png", file_types=(("Image", "*.png png"),), save_as=True,
         default_path=f"{readers[ix].page_index + 1}.png")
