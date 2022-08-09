@@ -38,7 +38,7 @@ def make_window():
                 [sg.Text("Status: disabled"), sg.Button("Authorize account", key="settings_mal_auth", disabled=True)]
             ])
         ],
-        [sg.Button("Save settings", key="settings_save"), sg.Button("Cancel", key="settings_cancel")]
+        [sg.Button("Save settings", key="settings_save", tooltip="New settings are applied on restart"), sg.Button("Cancel", key="settings_cancel")]
     ]
 
     wind = sg.Window("Settings", layout, disable_minimize=True, modal=True, finalize=True)

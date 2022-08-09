@@ -111,6 +111,9 @@ while True:
         ix = reader_windows.index(w)
         #print(ix)
         if e == "reader_loaded_chapter":
+            download_end_time = datetime.utcnow().timestamp()
+            set_status(
+            f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(readers[-1].images)} pages ({round(float(len(readers[-1].images))/(download_end_time - download_start_time), 2)} page/s)")
             menu[0][1][ix] = "{} - {}".format(readers[ix].book_info["title"],
                 readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"])
             wind["menu"].update(menu)
@@ -127,7 +130,14 @@ while True:
         else:
             readers[ix].handle(e)
         
+        if e == "reader_go_prev_ch":
+            download_start_time = datetime.utcnow().timestamp()
+            set_status("Downloading chapter...")
+
         if e == "reader_go_next_ch":
+            download_start_time = datetime.utcnow().timestamp()
+            set_status("Downloading chapter...")
+            
             print("updating...")
             if readers[ix].updated:
                 library.update(readers[ix].book_info["url"], readers[ix].chapter_index, 0)
@@ -371,6 +381,7 @@ while True:
         }
         with open("settings.json", "w") as f:
             f.write(json.dumps(d))
+        settings.read_settings() # refresh
         wsettings.close()
     
     if e == "settings_cancel":
