@@ -1,6 +1,7 @@
-Manga reader
---------------------------------------------------------------------------------
-A simple GUI client to read manga from the mangakatana website.
-Uses bs4 (with lxml as a back-end) for parsing html documents and PySimpleGUI
-for the user interface. An sqlite3 database is used for storing user's reading
-list.
+A simple GUI client for reading manga from the mangakatana website.
+
+Requirements:
+- Python 3.10.6
+- Packages in the requirements.txt file
+
+Tested only on Windows 10 21H2 Pro.
