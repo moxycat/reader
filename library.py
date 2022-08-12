@@ -62,14 +62,10 @@ def make_window():
     update_book_info()
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
     #print(thumbnail_urls)
-    itworks = False
     try:
-        thumbnails = mangakatana.download_images([thumbnail_urls[0]])
-        itworks = True
+        thumbnails = mangakatana.download_images(thumbnail_urls)
     except:
         thumbnails = [None] * len(thumbnail_urls)
-    
-    if itworks: thumbnails = mangakatana.download_images(thumbnail_urls)
 
     treedata = sg.TreeData()
     for i, (k, v) in enumerate(book_info.items()):
