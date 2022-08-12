@@ -5,14 +5,13 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
-import os.path
 
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
 
 def myround(x, prec=2, base=.05):
-  return round(base * round(float(x) / base),prec)
+  return round(base * round(float(x) / base), prec)
 
 settings.read_settings()
 
@@ -46,7 +45,7 @@ search_controls = [
     [
         sg.Column(
             [
-                [sg.Listbox([], size=(50, 20), bind_return_key=False, enable_events=True, key="book_list")]
+                [sg.Listbox([], size=(60, 25), bind_return_key=False, enable_events=True, key="book_list")]
             ], element_justification="c", vertical_alignment="c"),
         sg.VSeparator(),
         #sg.Column(preview, scrollable=False, visible=False, key="preview_col"),
@@ -168,7 +167,7 @@ while True:
             wind["book_list"].update([])
             continue
         l = len(results)
-        names = [textwrap.shorten(a["title"], width=50, placeholder="...") for a in results]
+        names = [textwrap.shorten(a["title"], width=60, placeholder="...") for a in results]
         wind["search_status"].update("Found {} result{}.".format(l, "s" if l > 1 else ""))
         set_status("Search complete!")
         wind["book_list"].update(names)
@@ -236,6 +235,7 @@ while True:
     if e == "details":
         wdetails = chapter_view.make_window()
         wdetails.TKroot.title(reader.book_info["title"])
+        wdetails["details_chapters"].bind("<Double-Button-1>", "_open_book")
         chapters = [a["name"] for a in reader.book_info["chapters"][::-1]]
         dates = [a["date"] for a in reader.book_info["chapters"][::-1]]
         longestname = max([len(a) for a in chapters])
@@ -243,13 +243,18 @@ while True:
         wdetails["details_chapters"].Widget.configure(width = max([len(a) for a in chapter_and_date]))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
         if is_in_library:
-            wdetails["details_chapters"].Widget.itemconfigure(len(reader.book_info["chapters"]) - reader.chapter_index - 1, bg="yellow")
+            l = len(reader.book_info["chapters"])
+            ix = l - reader.chapter_index - 1
+            wdetails["details_chapters"].Widget.itemconfigure(ix, bg="yellow")
+            pos = 1.0 - (reader.chapter_index // 15) / (l % 15)
+            print(pos)
+            wdetails["details_chapters"].set_vscroll_position(pos)
     
     if w == wdetails and e == sg.WIN_CLOSED:
         wdetails.close()
         wdetails = None
     
-    if e == "details_chapters":
+    if e == "details_chapters_open_book":
         ix = wdetails["details_chapters"].get_indexes()[0]
         ix = len(reader.book_info["chapters"]) - ix - 1
 
@@ -282,7 +287,7 @@ while True:
     if e == "read_continue":
         readers.append(Reader(reader.book_info))
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
-            readers[-1].book_info["chapters"][ix]["name"]))
+            readers[-1].book_info["chapters"][reader.chapter_index]["name"]))
         wind["menu"].update(menu)
         #print(menu[0])
         set_status("Downloading chapter...")
@@ -297,6 +302,7 @@ while True:
         if wloading is not None: wloading.close()
         set_status(
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(readers[-1].images)} pages ({round(float(len(readers[-1].images))/(download_end_time - download_start_time), 2)} page/s)")
+        if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
             library.update(readers[-1].book_info["url"], readers[-1].chapter_index, 0)
         elif not is_in_library:
@@ -341,6 +347,10 @@ while True:
     if w == wreadlist and e == "Edit chapter":
         url = v["lib_tree"][0]
         library.edit_chapter_progress(url)
+    
+    if w == wreadlist and e == "Remove from list":
+        url = v["lib_tree"][0]
+        library.delete(url)
     
     if w == wreadlist and e == "Refresh":
         wreadlist.close()
@@ -393,5 +403,8 @@ while True:
     if e == "Open reader":
         #if len(images) > 0: open_reader()
         continue
+    
+    if w == wind and e == "Help":
+        print("All of the free manga found on this app are hosted on third-party servers that are freely available to read online for all internet users. Any legal issues regarding the free manga should be taken up with the actual file hosts themselves, as we're not affiliated with them. Copyrights and trademarks for the manga, and other promotional materials are held by their respective owners and their use is allowed under the fair use clause of the Copyright Law.")
 
 wind.close()

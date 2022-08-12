@@ -60,7 +60,7 @@ class Reader:
 
     def make_window(self):
         layout = [
-            [sg.Menu([["&Tools", ["&Save screenshot", "&Maximize window", "&Exit"]]], key="reader_menu")],
+            [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
             [
                 [
                     sg.Column([

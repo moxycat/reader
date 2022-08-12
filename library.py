@@ -35,6 +35,11 @@ def update(url, ch, p):
     cur.execute("UPDATE reading_list SET chapter = ?, page = ? WHERE url = ?", (ch, p, url))
     conn.commit()
 
+def delete(url):
+    global conn, cur
+    cur.execute("DELETE FROM reading_list WHERE url = ?", (url, ))
+    conn.commit()
+
 def is_in_lib(url):
     global conn, cur
     cur.execute("SELECT * FROM reading_list WHERE url=?", (url,))
@@ -57,10 +62,15 @@ def make_window():
     update_book_info()
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
     #print(thumbnail_urls)
+    itworks = False
     try:
-        thumbnails = mangakatana.download_images(thumbnail_urls)
+        thumbnails = mangakatana.download_images([thumbnail_urls[0]])
+        itworks = True
     except:
         thumbnails = [None] * len(thumbnail_urls)
+    
+    if itworks: thumbnails = mangakatana.download_images(thumbnail_urls)
+
     treedata = sg.TreeData()
     for i, (k, v) in enumerate(book_info.items()):
         #if search_query not in v["info"]["title"]: continue
