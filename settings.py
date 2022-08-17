@@ -20,11 +20,14 @@ def make_window():
             sg.Frame("Reader", [
                 [sg.Column([
                     [sg.Text("Window width")],
-                    [sg.Text("Window height")]
+                    [sg.Text("Window height")],
+                    [sg.Text("Blue light filter intensity", tooltip="Set to 0 to disable")]
                 ]), sg.Column([
                     [sg.Input(key="settings_reader_width", default_text=settings["reader"]["w"], size=(4, 1))],
-                    [sg.Input(key="settings_reader_height", default_text=settings["reader"]["h"], size=(4, 1))]
+                    [sg.Input(key="settings_reader_height", default_text=settings["reader"]["h"], size=(4, 1))],
+                    [sg.Input(key="settings_bluefilter_perc", default_text=settings["reader"]["filter"], size=(3, 1)), sg.Text("%", pad=0)],
                 ])],
+                
                 [sg.Checkbox("Auto-update chapter progress", default=True, key="settings_reader_autoupdate")]
             ])
         ],

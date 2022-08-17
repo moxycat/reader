@@ -1,10 +1,10 @@
 import PySimpleGUI as sg
-import tkinter as tk
 from io import BytesIO
 from PIL import Image
 
 import mangakatana
 import settings
+import bluefilter
 
 def popup_loading():
     return sg.Window("", layout=[
@@ -29,6 +29,7 @@ class Reader:
     page_index = 0 # current page's index
     vscroll = 0 # vertical scroll position
     hscroll = 0 # horizontal scroll position
+    zoom_level = 1 # ...
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
@@ -42,7 +43,8 @@ class Reader:
         if chapter_index != -1: self.chapter_index = chapter_index
         image_urls = mangakatana.get_manga_chapter_images(self.book_info["chapters"][self.chapter_index]["url"])
         self.images = mangakatana.download_images(image_urls)
-        #self.images = bluefilter.apply_filter(self.images, 85)
+        if int(settings.settings["reader"]["filter"]) > 0:
+            self.images = bluefilter.bulk_bluefilter(self.images, int(settings.settings["reader"]["filter"]))
         self.max_page_index = len(self.images) - 1
 
     def check_if_mini(self, event):
@@ -58,9 +60,21 @@ class Reader:
         direction = int(-1 * (ev.delta / 120)) # 1 = down, -1 = up
         self.set_hscroll(direction * 0.05)
 
+    def zoom(self):
+        im = Image.open(BytesIO(self.images[self.page_index]))
+
+        im = im.resize((round(self.zoom_level * im.width), round(self.zoom_level * im.height)), resample=Image.BICUBIC)
+        outbuf = BytesIO()
+        im.save(outbuf, "png")
+        self.refresh(outbuf.getvalue())
+
     def make_window(self):
         layout = [
-            [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
+            [sg.Menu([["&Tools", ["&Save screenshot", "Zoom in", "Zoom out"]]], key="reader_menu")],
+            [sg.Column([
+                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0)]
+            ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
+            [sg.HSeparator()],
             [
                 [
                     sg.Column([
@@ -104,7 +118,12 @@ class Reader:
         #self.window["reader_page_img"].bind("<Double-Button-1>", "_reader_go_home")
         #self.window["reader_page_img"].bind("<Double-Button-3>","_reader_go_end")
     
-    def refresh(self) -> None:
+    def refresh(self, image = None) -> None:
+        if image is not None:
+            self.window["reader_page_img"].update(data=image)
+            self.window.refresh()
+            self.window["reader_page_img_col"].contents_changed()
+            return
         self.hscroll = 0
         self.vscroll = 0
         self.window["reader_page_num"].update(
@@ -122,7 +141,8 @@ class Reader:
         self.window["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
         self.window["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
         im = Image.open(BytesIO(self.images[self.page_index]))
-        self.window.TKroot.maxsize(im.width + 45, im.height + (70 if settings.settings["ui"]["theme"] == "Light" else 71))
+        print(im.width, im.height)
+        self.window.TKroot.maxsize(im.width + 45, im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107))
         #self.window.TKroot.minsize((im.width + 45) // 2, (im.height + 70) // 2)
         im.close()
 
@@ -133,7 +153,7 @@ class Reader:
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
         print(self.window.size)
-        opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - (70 if settings.settings["ui"]["theme"] == "Light" else 71)}
+        opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - (105 if settings.settings["ui"]["theme"] == "Light" else 107)}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
 
     def set_page(self, n):
@@ -175,6 +195,12 @@ class Reader:
         self.popup_window.read(timeout=0)
         self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
 
+    def set_zoom(self, d):
+        if self.zoom_level + d <= 0: return
+        self.zoom_level += d
+        self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
+        self.zoom()
+
     def jump(self):
         layout = [
             [sg.Input(key="npage", size=(10, 1))],
@@ -214,5 +240,7 @@ class Reader:
             self.popup_window.close()
             self.set_page(0)
             self.refresh()
-        #if event == "reader_mini": print(self.window.size)
-        #if event == "reader_shown": print("reader shown")
+        if event == "reader_zoom_in":
+            self.set_zoom(0.25)
+        if event == "reader_zoom_out":
+            self.set_zoom(-0.25)

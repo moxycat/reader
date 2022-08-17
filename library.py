@@ -4,6 +4,7 @@ import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
+import requests
 
 import mangakatana
 
@@ -63,9 +64,13 @@ def make_window():
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
     #print(thumbnail_urls)
     try:
-        thumbnails = mangakatana.download_images(thumbnail_urls)
+        requests.get(thumbnail_urls[0])
+        itworks = True
     except:
         thumbnails = [None] * len(thumbnail_urls)
+        itworks = False
+    
+    if itworks: thumbnails = mangakatana.download_images(thumbnail_urls)
 
     treedata = sg.TreeData()
     for i, (k, v) in enumerate(book_info.items()):
@@ -81,7 +86,12 @@ def make_window():
         im.save(outbuf, "png")
         treedata.insert("", k,
             "",
-            [textwrap.shorten(v["info"]["title"], width=50, placeholder="..."), "{}/{}".format(str(int(v["ch"]) + 1).zfill(2), "??" if v["info"]["status"] == "Ongoing" else str(len(v["info"]["chapters"])).zfill(2)), v["info"]["chapters"][-1]["date"]],
+            [
+                textwrap.shorten(v["info"]["title"], width=50, placeholder="..."),
+                "{}/{}".format(
+                    str(int(v["ch"]) + 1).zfill(2),
+                    str(len(v["info"]["chapters"])).zfill(2) if v["info"]["status"] == "Completed" else "[" + str(len(v["info"]["chapters"])).zfill(2) + "]"
+                ), v["info"]["chapters"][-1]["date"]],
             outbuf.getvalue(),
             )
     
@@ -99,7 +109,8 @@ def make_window():
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Edit chapter", "Remove from list"]]
             )
-        ]
+        ],
+        [sg.Text("Note the number of chapters here will likely differ to the official count.")]
     ]
     return layout
 

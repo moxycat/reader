@@ -43,19 +43,21 @@ search_controls = [
     [sg.Text("", key="search_status", size=(90, 1))],
     [sg.HSeparator()],
     [
-        sg.Column(
+        sg.vtop(sg.Column(
             [
-                [sg.Listbox([], size=(60, 25), bind_return_key=False, enable_events=True, key="book_list")]
-            ], element_justification="c", vertical_alignment="c"),
+                [sg.Listbox([], size=(50, 20), bind_return_key=False, enable_events=True, key="book_list")]
+            ], element_justification="c", vertical_alignment="c")),
         sg.VSeparator(),
         #sg.Column(preview, scrollable=False, visible=False, key="preview_col"),
-        sg.Column(
+        sg.vtop(
+            sg.Column(
             [
                 [sg.Text(key="preview_title", font="Consolas 14 underline")],
                 [sg.Image(key="preview_image")]
-            ], key="preview_col_0"),
+            ], key="preview_col_0")
+        ),
         #sg.VSeparator(),
-        sg.Column(
+        sg.vtop(sg.Column(
             [
                 [sg.Text(key="preview_author")],
                 [sg.Text(key="preview_genres")],
@@ -69,7 +71,7 @@ search_controls = [
                     sg.Button("Latest chapter", key="read_latest", visible=False),
                 ]
                 #[sg.Listbox([], key="preview_chapters", size=(50, 15), visible=False, horizontal_scroll=True)]
-            ], key="preview_col_1")
+            ], key="preview_col_1"))
     ]
 ]
 
@@ -134,6 +136,7 @@ while True:
             set_status("Downloading chapter...")
 
         if e == "reader_go_next_ch":
+            #if readers[ix].window[] check if it's disabled
             download_start_time = datetime.utcnow().timestamp()
             set_status("Downloading chapter...")
             
@@ -317,6 +320,7 @@ while True:
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
         default_extension="png", file_types=(("Image", "*.png png"),), save_as=True,
         default_path=f"{readers[ix].page_index + 1}.png")
+        if filename is None: continue
         im = Image.open(BytesIO(readers[ix].images[readers[ix].page_index]))
         im.save(filename, "png")
         im.close()
@@ -354,7 +358,7 @@ while True:
     
     if w == wreadlist and e == "Refresh":
         wreadlist.close()
-        wind.perform_long_operation(library.make_window_layout, "lib_window_made")
+        wind.perform_long_operation(library.make_window, "lib_window_made")
 
     if e == "lib_tree_open_book":
         url = v["lib_tree"][0]
@@ -383,7 +387,8 @@ while True:
             },
             "reader": {
                 "w": v["settings_reader_width"],
-                "h": v["settings_reader_height"]
+                "h": v["settings_reader_height"],
+                "filter": v["settings_bluefilter_perc"]
             },
             "server": {
                 "source": v["settings_server_source"]
@@ -399,10 +404,6 @@ while True:
     
     if w == wsettings and e == sg.WIN_CLOSED:
         wsettings.close()
-    
-    if e == "Open reader":
-        #if len(images) > 0: open_reader()
-        continue
     
     if w == wind and e == "Help":
         print("All of the free manga found on this app are hosted on third-party servers that are freely available to read online for all internet users. Any legal issues regarding the free manga should be taken up with the actual file hosts themselves, as we're not affiliated with them. Copyrights and trademarks for the manga, and other promotional materials are held by their respective owners and their use is allowed under the fair use clause of the Copyright Law.")
