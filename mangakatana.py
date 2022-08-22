@@ -2,6 +2,8 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
+import base64
+import grequests as gr
 from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
@@ -154,6 +156,10 @@ def get_manga_chapter_images(url: str) -> list:
     images = re.findall("var ytaw=\[('.+'),\];", resp.text)
     images = images[0].replace("'", "").split(",")
     images = list(filter(lambda item: item is not None, images))
+    images = [image[image.find("https://"):]for image in images]
+    images = list(dict.fromkeys(images))
+    for image in images:
+        print(image)
     return images
 
 def download_images(urls: list) -> list:
@@ -164,17 +170,37 @@ def download_images(urls: list) -> list:
             async with sesh.get(url) as resp:
                 buf = BytesIO()
                 outbuf = BytesIO()
+                
                 buf.write(await resp.read())
-                im = Image.open(buf)
-                im.save(outbuf, "png")
-                results[i] = outbuf.getvalue()
-                im.close()
-                buf.close()
-                outbuf.close()
-                print(f"{i} done")
+                resp.close()
+                
+                try:
+                    im = Image.open(buf)
+                    im.save(outbuf, "png")
+                    results[i] = outbuf.getvalue()
+                    im.close()
+                    buf.close()
+                    outbuf.close()
+                    print(f"{i} done")
+                except:
+                    print(f"{i} failed")
+        await sesh.close()
     
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]
     loop.run_until_complete(asyncio.wait(tasks))
+    return results
+
+
+def download_images2(urls):
+    results = []
+    rs = (gr.get(url) for url in urls)
+    resps = gr.map(rs)
+    for i, resp in enumerate(resps):
+        print(i)
+        buf = BytesIO()
+        im = Image.open(resp.raw)
+        im.save(buf, "png")
+        results.append(buf.getvalue())
     return results

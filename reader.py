@@ -29,7 +29,7 @@ class Reader:
     page_index = 0 # current page's index
     vscroll = 0 # vertical scroll position
     hscroll = 0 # horizontal scroll position
-    zoom_level = 1 # ...
+    zoom_level = 1.0 # ...
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
@@ -79,7 +79,7 @@ class Reader:
                 [
                     sg.Column([
                         [sg.Image(key="reader_page_img", enable_events=False, pad=0)]
-                    ], size=(int(settings.settings["reader"]["w"]), int(settings.settings["reader"]["h"])), scrollable=True, key="reader_page_img_col")
+                    ], size=(int(settings.settings["reader"]["w"]), int(settings.settings["reader"]["h"])), scrollable=True, key="reader_page_img_col", element_justification="c", justification="c", vertical_alignment="c")
                 ],
                 [sg.HSeparator()],
                 [
@@ -121,11 +121,13 @@ class Reader:
     def refresh(self, image = None) -> None:
         if image is not None:
             self.window["reader_page_img"].update(data=image)
+            self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
             self.window.refresh()
             self.window["reader_page_img_col"].contents_changed()
             return
         self.hscroll = 0
         self.vscroll = 0
+        self.zoom_level = 1.0
         self.window["reader_page_num"].update(
             f"{str(self.page_index + 1).zfill(2)}/{str(self.max_page_index + 1).zfill(2)}")
         self.window.TKroot.title(self.book_info["chapters"][self.chapter_index]["name"])
@@ -136,6 +138,7 @@ class Reader:
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
         self.window["reader_page_img"].update(data=self.images[self.page_index])
+        self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
         self.window.refresh()
         self.window["reader_page_img_col"].contents_changed()
         self.window["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
@@ -198,7 +201,6 @@ class Reader:
     def set_zoom(self, d):
         if self.zoom_level + d <= 0: return
         self.zoom_level += d
-        self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
         self.zoom()
 
     def jump(self):

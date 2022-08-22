@@ -3,6 +3,7 @@ from datetime import datetime
 import json
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
+import grequests as gr
 import requests
 import textwrap
 
@@ -110,7 +111,7 @@ while True:
     reader_windows = [r.window for r in readers]
     if w in reader_windows:
         ix = reader_windows.index(w)
-        #print(ix)
+        print(ix)
         if e == "reader_loaded_chapter":
             download_end_time = datetime.utcnow().timestamp()
             set_status(
@@ -145,8 +146,11 @@ while True:
                 library.update(readers[ix].book_info["url"], readers[ix].chapter_index, 0)
             print("done")
     
-    if e in menu[0][1]:
-        ix = menu[0][1].index(e)
+    menu_clean = [a.replace("&", "") for a in menu[0][1]]
+
+    if e in menu_clean:
+        ix = menu_clean.index(e)
+        print(ix)
         readers[ix].window.un_hide()
         readers[ix].window.bring_to_front()
 
@@ -170,7 +174,7 @@ while True:
             wind["book_list"].update([])
             continue
         l = len(results)
-        names = [textwrap.shorten(a["title"], width=60, placeholder="...") for a in results]
+        names = [textwrap.shorten(a["title"], width=50, placeholder="...") for a in results]
         wind["search_status"].update("Found {} result{}.".format(l, "s" if l > 1 else ""))
         set_status("Search complete!")
         wind["book_list"].update(names)
