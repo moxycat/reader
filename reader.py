@@ -30,6 +30,7 @@ class Reader:
     vscroll = 0 # vertical scroll position
     hscroll = 0 # horizontal scroll position
     zoom_level = 1.0 # ...
+    zoom_lock = False
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
@@ -43,6 +44,9 @@ class Reader:
         if chapter_index != -1: self.chapter_index = chapter_index
         image_urls = mangakatana.get_manga_chapter_images(self.book_info["chapters"][self.chapter_index]["url"])
         self.images = mangakatana.download_images(image_urls)
+        
+        if None in self.images: return -1
+
         if int(settings.settings["reader"]["filter"]) > 0:
             self.images = bluefilter.bulk_bluefilter(self.images, int(settings.settings["reader"]["filter"]))
         self.max_page_index = len(self.images) - 1
@@ -70,7 +74,7 @@ class Reader:
 
     def make_window(self):
         layout = [
-            [sg.Menu([["&Tools", ["&Save screenshot", "Zoom in", "Zoom out"]]], key="reader_menu")],
+            [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
             [sg.Column([
                 [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0)]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
@@ -242,7 +246,5 @@ class Reader:
             self.popup_window.close()
             self.set_page(0)
             self.refresh()
-        if event == "reader_zoom_in":
-            self.set_zoom(0.25)
-        if event == "reader_zoom_out":
-            self.set_zoom(-0.25)
+        if event == "reader_zoom_in": self.set_zoom(0.25)
+        if event == "reader_zoom_out": self.set_zoom(-0.25)

@@ -2,8 +2,6 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
-import base64
-import grequests as gr
 from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
@@ -166,41 +164,31 @@ def download_images(urls: list) -> list:
     sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
     async def fetch(url: str, i: int):
-        async with sem, aiohttp.ClientSession() as sesh:
-            async with sesh.get(url) as resp:
-                buf = BytesIO()
-                outbuf = BytesIO()
-                
-                buf.write(await resp.read())
-                resp.close()
-                
-                try:
-                    im = Image.open(buf)
-                    im.save(outbuf, "png")
-                    results[i] = outbuf.getvalue()
-                    im.close()
-                    buf.close()
-                    outbuf.close()
-                    print(f"{i} done")
-                except:
-                    print(f"{i} failed")
-        await sesh.close()
+        try:
+            async with sem, aiohttp.ClientSession() as sesh:
+                async with sesh.get(url) as resp:
+                    buf = BytesIO()
+                    outbuf = BytesIO()
+                    try:
+                        buf.write(await resp.read())
+                        resp.close()
+                    except:
+                        pass
+                    try:
+                        im = Image.open(buf)
+                        im.save(outbuf, "png")
+                        results[i] = outbuf.getvalue()
+                        im.close()
+                        buf.close()
+                        outbuf.close()
+                        print(f"{i} done")
+                    except:
+                        print(f"{i} failed")
+            await sesh.close()
+        except: pass
     
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]
     loop.run_until_complete(asyncio.wait(tasks))
-    return results
-
-
-def download_images2(urls):
-    results = []
-    rs = (gr.get(url) for url in urls)
-    resps = gr.map(rs)
-    for i, resp in enumerate(resps):
-        print(i)
-        buf = BytesIO()
-        im = Image.open(resp.raw)
-        im.save(buf, "png")
-        results.append(buf.getvalue())
     return results

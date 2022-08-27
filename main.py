@@ -3,7 +3,6 @@ from datetime import datetime
 import json
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
-import grequests as gr
 import requests
 import textwrap
 
@@ -137,7 +136,6 @@ while True:
             set_status("Downloading chapter...")
 
         if e == "reader_go_next_ch":
-            #if readers[ix].window[] check if it's disabled
             download_start_time = datetime.utcnow().timestamp()
             set_status("Downloading chapter...")
             
@@ -296,6 +294,7 @@ while True:
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][reader.chapter_index]["name"]))
         wind["menu"].update(menu)
+
         #print(menu[0])
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
@@ -305,6 +304,12 @@ while True:
         wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
     
     if e == "open_reader":
+        if v["open_reader"] == -1:
+            wloading.close()
+            del readers[-1]
+            del menu[0][1][-1]
+            wind["menu"].update(menu)
+            continue
         download_end_time = datetime.utcnow().timestamp()
         if wloading is not None: wloading.close()
         set_status(
@@ -318,7 +323,6 @@ while True:
                 library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0)
         readers[-1].make_window()
         readers[-1].set_page(0)
-        #wind.hide()
 
     if e == "Save screenshot":
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
