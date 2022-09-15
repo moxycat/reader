@@ -77,4 +77,7 @@ def search(query: str):
 
 def get_manga_chapter_images(url: str) -> list:
     resp = r.get(url)
-    template = url + "{}.html"
+    soup = BeautifulSoup(resp.text, "lxml")
+    return soup.prettify()
+
+print(get_manga_chapter_images("https://fanfox.net/manga/komi_san_wa_komyushou_desu/c369/1.html"))

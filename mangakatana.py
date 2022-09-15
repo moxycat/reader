@@ -2,6 +2,7 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
+import time
 from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
@@ -23,7 +24,9 @@ def get_manga_info(url: str) -> dict:
     alt_names_div = soup.find("div", {"class": "alt_name"})
     if alt_names_div is None: alt_names = [""]
     else: alt_names = [name.strip() for name in alt_names_div.text.split(" ; ")]
-    author = soup.find("a", {"class": "author"}).text.strip()
+    author = soup.find("a", {"class": "author"})
+    if author is None: author = "Unknown"
+    else: author = author.text.strip()
     genres = [a.text.strip() for a in soup.find("div", {"class": "genres"})]
     genres = list(filter(lambda item: len(item) > 0, genres))
     status = soup.find("div", {"class": re.compile("d-cell-small value status .+")}).text.strip()
@@ -54,12 +57,46 @@ def get_manga_info(url: str) -> dict:
         "chapters": chapters
         }
 
+def search2(query: str, search_by: int = 0) -> list:
+    query = quote_plus(query)
+    template_url = "https://mangakatana.com/page/{}?search={}&search_by={}".format("{}", query, "book_name" if search_by == 0 else "author")
+    pages = []
+    soups = [None]
+    max_page = 1
+    
+    resp = r.get(template_url.format(1))
+    pages.append(resp.text)
+
+    soups[0] = BeautifulSoup(resp.text, "lxml")
+
+    nresults = soups[0].find("div", {"class": "widget-title"}).find("span").text.strip()
+    if not nresults.startswith("Search"): nresults = 1
+    else: nresults = int(nresults.removeprefix("Search results (").removesuffix(")"))
+
+    max_page = (nresults // 20) + 1
+
+    if nresults == 1:
+        cover_url = soups[0].find("div", {"class": "cover"}).find("img").get("src")
+        title = soups[0].find("h1", {"class": "heading"}).text.strip()
+        link = soups[0].find("link", {"rel": "canonical"}).get("href")
+        return [{"title": title, "url": link, "cover_url": cover_url}]
+
+    for i in range(2, max_page + 1):
+        resp = r.get(template_url.format(i))
+        if resp.status_code != 200: break
+        soups.append(BeautifulSoup(resp.text, "lxml"))
+
+    for soup in soups:
+        print(len(soup.prettify()))
+    
+
+
 def search(query: str, search_by: int = 0) -> list:
     query = quote_plus(query)
     template_url = "https://mangakatana.com/page/{}?search={}&search_by={}"
     page = 1
     url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
-    resp = r.get(url)
+    resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
     if resp.status_code != 200: return []
     soup = BeautifulSoup(resp.text, "lxml")
 
@@ -88,11 +125,17 @@ def search(query: str, search_by: int = 0) -> list:
             added += 1
         if added != nresults: page += 1
         else: break
+        #print(results)
         url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
-        resp = r.get(url)
+        print(url)
+        
+        resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
         if resp.status_code != 200: return None
+        while len(resp.text) == 0:
+            resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
+            if resp.status_code != 200: return None
+
         soup = BeautifulSoup(resp.text, "lxml")
-        #books = soup.find("div", {"id": "book_list"}).find_all("div", {"class": "item"})
         book_list = soup.find("div", {"id": "book_list"})
         if book_list is None:
             cover_url = soup.find("div", {"class": "cover"}).find("img").get("src")
@@ -134,7 +177,7 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
         cover_url = soup.find("div", {"class": "cover"}).find("img").get("src")
         title = soup.find("h1", {"class": "heading"}).text.strip()
         link = soup.find("link", {"rel": "canonical"}).get("href")
-        return [{"title": title, "url": link, "cover_url": cover_url}]
+        return ([{"title": title, "url": link, "cover_url": cover_url}], 1)
     
     books = book_list.find_all("div", {"class": "item"})
     results = []
