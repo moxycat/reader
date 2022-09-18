@@ -194,7 +194,8 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
 def get_manga_chapter_images(url: str) -> list:
     resp = r.get(url)
     if resp.status_code != 200: return None
-    images = re.findall("var ytaw=\[('.+'),\];", resp.text)
+    images = re.findall("var thzq=\[('.+'),\];", resp.text)
+    print(images)
     images = images[0].replace("'", "").split(",")
     images = list(filter(lambda item: item is not None, images))
     images = [image[image.find("https://"):]for image in images]
