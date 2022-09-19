@@ -6,11 +6,20 @@ from PIL import Image
 from datetime import datetime
 import requests
 
-import mangakatana
+import mangakatana, settings
 
 conn = None
 cur = None
 book_info = {}
+
+# no enums in python ;w;
+
+class BookStatus():
+    READING = 1
+    COMPLETED = 2
+    ON_HOLD = 3
+    DROPPED = 4
+    PLAN_TO_READ = 5
 
 # modded Tree class where right clicking on an element selects it before opening the right click menu
 class TreeRtClick(sg.Tree):
@@ -22,13 +31,23 @@ class TreeRtClick(sg.Tree):
 
 def init_db():
     global conn, cur
-    conn = sql.connect("a.db", check_same_thread=False)
+    conn = sql.connect(settings.settings["storage"]["path"], check_same_thread=False)
     cur = conn.cursor()
     return (conn, cur)
 
 def add(url, ch=0, p=0):
     global conn, cur
     cur.execute("INSERT INTO reading_list VALUES(?, ?, ?);", (url, ch, p))
+    conn.commit()
+
+def add(url, ch=0, vol=0, sd="unknown", ed="unknown", score="0", /, list=BookStatus.PLAN_TO_READ):
+    query = "INSERT INTO {} VALUES(?, ?, ?, ?, ?, ?);"
+    if list == BookStatus.READING: query.format("books_cr")
+    elif list == BookStatus.COMPLETED: query.format("books_cpml")
+    elif list == BookStatus.ON_HOLD: query.format("books_idle")
+    elif list == BookStatus.DROPPED: query.format("books_drop")
+    elif list == BookStatus.PLAN_TO_READ: query.format("books_ptr")
+    cur.execute(query, (url, ch, vol, sd, ed, score))
     conn.commit()
 
 def update(url, ch, p):
@@ -56,7 +75,7 @@ def update_book_info():
         info = mangakatana.get_manga_info(row[0])
         book_info.setdefault(row[0], {"ch": row[1], "p": row[2], "info": info})
 
-    book_info = dict(sorted(book_info.items(), key=lambda item: datetime.strptime(item[1]["info"]["chapters"][-1]["date"], "%b-%d-%Y"), reverse=True))
+    book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
 
 def make_window():
     global conn, cur, book_info
@@ -82,7 +101,7 @@ def make_window():
             im = Image.open("default_cover.png")
         outbuf = BytesIO()
         
-        im.thumbnail((50, 50), resample=Image.BICUBIC)
+        im.thumbnail((30, 30), resample=Image.BICUBIC)
         im.save(outbuf, "png")
         treedata.insert("", k,
             "",
@@ -91,23 +110,52 @@ def make_window():
                 "{}/{}".format(
                     str(int(v["ch"]) + 1).zfill(2),
                     str(len(v["info"]["chapters"])).zfill(2) if v["info"]["status"] == "Completed" else "[" + str(len(v["info"]["chapters"])).zfill(2) + "]"
-                ), v["info"]["chapters"][-1]["date"]],
+                ), datetime.strftime(v["info"]["chapters"][-1]["date"], "%b-%d-%Y")],
             outbuf.getvalue(),
             )
-    
-    #title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) // 2 #+ 20
     title_max_len = 50
+    tab_cr = [
+        [
+            TreeRtClick(
+                data=treedata, headings=["Title", "Progress", "Last update"], col0_heading="Image",
+                key="lib_tree", row_height=30, num_rows=5, enable_events=False,
+                max_col_width=title_max_len, justification="l",
+                right_click_menu=["", ["Edit chapter", "Remove from list", "Move to", ["Completed", "Idle", "Dropped", "Plan to read"]]]
+            )
+        ]
+    ]
+    tab_ptr = [
+        [
+            TreeRtClick(
+                data=treedata, headings=["Title", "Progress", "Last update"], col0_heading="",
+                key="lib_tree", row_height=30, num_rows=5, enable_events=False,
+                max_col_width=title_max_len, justification="l",
+                right_click_menu=["", ["Edit chapter", "Remove from list", "Move to", ["Reading", "Completed", "Idle", "Dropped"]]]
+            )
+        ]
+    ]
+    tab_cmpl = []
+    tab_drop = []
+    tab_idle = []
+
+    #title_max_len = max([len(book_info[k]["info"]["title"]) for k in book_info.keys()]) // 2 #+ 20
+    
     layout = [
         [
             sg.Menu([["Window", ["Refresh", "Close"]]], key="lib_menu")
         ],
-        [sg.Input(key="lib_search_query", size=(title_max_len, 1)), sg.Button("⌕", key="lib_search", bind_return_key=True)],
+        [
+            sg.Column(
+                [
+                    [sg.Input(key="lib_search_query", size=(title_max_len, 1)), sg.Button("⌕", key="lib_search", bind_return_key=True)]
+                ], element_justification="l", vertical_alignment="l", justification="l")
+        ],
         [
             TreeRtClick(
                 data=treedata, headings=["Title", "Progress", "Last update"], col0_heading="",
-                key="lib_tree", row_height=50, num_rows=5, enable_events=False,
+                key="lib_tree", row_height=30, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Edit chapter", "Remove from list"]]
+                right_click_menu=["", ["Edit chapter", "Remove from list", "Move to", ["A", "B"]]]
             )
         ],
         [sg.Text("Note the number of chapters here will likely differ to the official count.")]

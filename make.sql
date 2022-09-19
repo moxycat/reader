@@ -1,10 +1,54 @@
-CREATE TABLE reading_list (
+CREATE TABLE books_cr (
     url text primary key,
-    chapter integer,
-    page integer
+    
+    chapter integer not null default 0,
+    volume integer not null default 0,
+    
+    start_date text not null default "unknown",
+    end_date text not null default "unknown",
+    score text not null default "0"
 );
 
-CREATE TABLE favourites (
-    url text,
-    foreign key(url) references reading_list(url)
-)
+CREATE TABLE books_cmpl (
+    url text primary key,
+    
+    chapter integer not null default 0,
+    volume integer not null default 0,
+    
+    start_date text not null default "unknown",
+    end_date text not null default "unknown",
+    score text not null default "0"
+);
+
+CREATE TABLE books_idle (
+    url text primary key,
+    
+    chapter integer not null default 0,
+    volume integer not null default 0,
+    
+    start_date text not null default "unknown",
+    end_date text not null default "unknown",
+    score text not null default "0"
+);
+
+CREATE TABLE books_drop (
+    url text primary key,
+    
+    chapter integer not null default 0,
+    volume integer not null default 0,
+    
+    start_date text not null default "unknown",
+    end_date text not null default "unknown",
+    score text not null default "0"
+);
+
+CREATE TABLE books_ptr (
+    url text primary key,
+    
+    chapter integer not null default 0,
+    volume integer not null default 0,
+    
+    start_date text not null default "unknown",
+    end_date text not null default "unknown",
+    score text not null default "0"
+);

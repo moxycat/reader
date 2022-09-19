@@ -202,7 +202,7 @@ while True:
         wind["preview_genres"].update("Genres:         " + genres)
         wind["preview_status"].update("Status:         " + reader.book_info["status"])
         wind["preview_latest"].update("Latest chapter: " + reader.book_info["chapters"][-1]["name"])
-        wind["preview_update"].update("Updated at:     " + reader.book_info["chapters"][-1]["date"])
+        wind["preview_update"].update("Updated at:     " + datetime.strftime(reader.book_info["chapters"][-1]["date"], "%b-%d-%Y"))
         wind["preview_desc"].update("\n".join(textwrap.wrap(reader.book_info["description"], width=50)), visible=True)
         
         is_in_library, rows = library.is_in_lib(reader.book_info["url"])
@@ -242,7 +242,7 @@ while True:
         wdetails.TKroot.title(reader.book_info["title"])
         wdetails["details_chapters"].bind("<Double-Button-1>", "_open_book")
         chapters = [a["name"] for a in reader.book_info["chapters"][::-1]]
-        dates = [a["date"] for a in reader.book_info["chapters"][::-1]]
+        dates = [datetime.strftime(a["date"], "%b-%d-%Y") for a in reader.book_info["chapters"][::-1]]
         longestname = max([len(a) for a in chapters])
         chapter_and_date = ["{}{}{}".format(a[0], " " * (longestname - len(a[0]) + 5), a[1]) for a in zip(chapters, dates)]
         wdetails["details_chapters"].Widget.configure(width = max([len(a) for a in chapter_and_date]))
@@ -320,7 +320,7 @@ while True:
         elif not is_in_library:
             readers[-1].updated = library.start_reading()
             if readers[-1].updated:
-                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0)
+                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, datetime.today().strftime("%Y-%m-%d"), "unknown", "0", list=library.BookStatus.READING)
         readers[-1].make_window()
         readers[-1].set_page(0)
 
@@ -400,6 +400,9 @@ while True:
             },
             "server": {
                 "source": v["settings_server_source"]
+            },
+            "storage": {
+                "path": v["settings_storage_db_path"]
             }
         }
         with open("settings.json", "w") as f:

@@ -2,7 +2,7 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
-import time
+from datetime import datetime
 from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
@@ -40,7 +40,7 @@ def get_manga_info(url: str) -> dict:
             {
                 "name": a.text.strip(),
                 "url": a.get("href") + srvr,
-                "date": tr.find("div", {"class": "update_time"}).text.strip()
+                "date": datetime.strptime(tr.find("div", {"class": "update_time"}).text.strip(), "%b-%d-%Y")
             }
         )
     
