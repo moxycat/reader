@@ -5,6 +5,5 @@ requests
 lxml
 asyncio
 aiohttp
-aiofiles
-numpy
-grequests
+requests_html
+sqlite3

@@ -5,6 +5,7 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
+import asyncio
 
 import mangakatana
 import chapter_view, library, settings
@@ -288,6 +289,8 @@ while True:
         download_start_time = datetime.utcnow().timestamp()
         wloading = popup_loading()
         wloading.read(timeout=0)
+        print(readers[-1].book_info["chapters"][readers[-1].chapter_index]["url"])
+        #images = mangakatana.get_manga_chapter_images(readers[-1].book_info["chapters"][ix]["url"])
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
         wdetails.close()
 
@@ -320,6 +323,7 @@ while True:
         wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
     
     if e == "open_reader":
+        print(v["open_reader"])
         if v["open_reader"] == -1:
             wloading.close()
             del readers[-1]

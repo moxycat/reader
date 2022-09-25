@@ -36,7 +36,8 @@ def make_window():
         ],
         [
             sg.Frame("Storage", [
-                [sg.Text("Path to database"), sg.Input(key="settings_storage_db_path", default_text=settings["storage"]["path"], size=(20, 1)), sg.FileBrowse("📁", file_types=(("SQLite3 file", "*.* *"),))]
+                [sg.Text("Path to database"), sg.Input(key="settings_storage_db_path", default_text=settings["storage"]["path"], size=(20, 1)), sg.FileBrowse("📁", file_types=(("SQLite3 file", "*.* *"),))],
+                [sg.Button("Create new"), sg.Button("Delete contents", tooltip="This will delete all user data from the currently selected database file!")]            
             ])
         ],
         [sg.Button("Save settings", key="settings_save", tooltip="New settings are applied on restart"), sg.Button("Cancel", key="settings_cancel")]
