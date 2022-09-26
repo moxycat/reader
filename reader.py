@@ -73,8 +73,6 @@ class Reader:
 
 
         self.images = mangakatana.download_images(image_urls)
-        for image in self.images:
-            print(imghdr.what(image))
         
         #if None in self.images: return -1
 
