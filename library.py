@@ -37,17 +37,17 @@ def init_db():
     cur = conn.cursor()
     return (conn, cur)
 
-def add(url, ch=0, vol=0, sd="unknown", ed="unknown", score="0", /, where=BookStatus.PLAN_TO_READ):
-    query = "INSERT INTO {} VALUES(?, ?, ?, ?, ?, ?);".format(tables[where])
+def add(url, ch=0, vol=0, sd="unknown", ed="unknown", score="0", /, where=BookStatus.PLAN_TO_READ, last_update=datetime.strftime(datetime.now(), "%b-%d-%Y %H:%M:%S")):
+    query = "INSERT INTO {} VALUES(?, ?, ?, ?, ?, ?, ?);".format(tables[where])
     print(query)
-    cur.execute(query, (url, ch, vol, sd, ed, score))
+    cur.execute(query, (url, ch, vol, sd, ed, score, last_update))
     conn.commit()
 
-def update(url, ch=None, vol=None, sd=None, ed=None, score=None):
+def update(url, ch=None, vol=None, sd=None, ed=None, score=None, last_update=datetime.strftime(datetime.now(), "%b-%d-%Y %H:%M:%S")):
     _, _, ix = is_in_lib(url)
     table = tables[ix]
     query = "UPDATE {} SET ".format(table)
-    args = [(ch, "chapter"), (vol, "volume"), (sd, "start_date"), (ed, "end_date"), (score, "score")]
+    args = [(ch, "chapter"), (vol, "volume"), (sd, "start_date"), (ed, "end_date"), (score, "score"), (last_update, "last_update")]
     for arg in args:
         if arg[0] is not None: query += arg[1] + "=?,"
     if query[-1] == ",": query = query.removesuffix(",")
@@ -95,7 +95,7 @@ def update_book_info():
         rows = cur.fetchall()
         for row in rows:
             info = mangakatana.get_manga_info(row[0])
-            book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "list": x})
+            book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": x})
 
     book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
 
@@ -266,7 +266,7 @@ def edit_chapter_progress(url):
         e, v = w.read()
         print(e)
         if e == "lib_edit_cancel" or e == sg.WIN_CLOSED:
-            break
+            return False
         if e == "lib_edit_plus":
             val = v["lib_edit_progress_chapter"]
             try:

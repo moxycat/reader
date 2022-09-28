@@ -6,7 +6,8 @@ CREATE TABLE books_cr (
     
     start_date text not null default "unknown",
     end_date text not null default "unknown",
-    score text not null default "0"
+    score text not null default "0",
+    last_update text not null default "unknown"
 );
 
 CREATE TABLE books_cmpl (
@@ -17,7 +18,8 @@ CREATE TABLE books_cmpl (
     
     start_date text not null default "unknown",
     end_date text not null default "unknown",
-    score text not null default "0"
+    score text not null default "0",
+    last_update text not null default "unknown"
 );
 
 CREATE TABLE books_idle (
@@ -28,7 +30,8 @@ CREATE TABLE books_idle (
     
     start_date text not null default "unknown",
     end_date text not null default "unknown",
-    score text not null default "0"
+    score text not null default "0",
+    last_update text not null default "unknown"
 );
 
 CREATE TABLE books_drop (
@@ -39,7 +42,8 @@ CREATE TABLE books_drop (
     
     start_date text not null default "unknown",
     end_date text not null default "unknown",
-    score text not null default "0"
+    score text not null default "0",
+    last_update text not null default "unknown"
 );
 
 CREATE TABLE books_ptr (
@@ -50,5 +54,6 @@ CREATE TABLE books_ptr (
     
     start_date text not null default "unknown",
     end_date text not null default "unknown",
-    score text not null default "0"
+    score text not null default "0",
+    last_update text not null default "unknown"
 );

@@ -5,7 +5,6 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
-import asyncio
 
 import mangakatana
 import chapter_view, library, settings
@@ -53,9 +52,9 @@ search_controls = [
         sg.vtop(
             sg.Column(
             [
-                [sg.Text(key="preview_title", font="Consolas 14 underline")],
+                [sg.Text(key="preview_title", font="Consolas 14 underline", visible=False)],
                 [sg.Image(key="preview_image")],
-                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True), sg.Button("Add to list", key="add_to_list", visible=False)],
+                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True, background_color="white", button_background_color="white"), sg.Button("Add to list", key="add_to_list", visible=False)],
             ], key="preview_col_0")
         ),
         #sg.VSeparator(),
@@ -86,6 +85,8 @@ layout = [
 library.init_db()
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
+
+[library.book_info[k]["info"]["title"] for k in library.book_info.keys()]
 
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
@@ -337,6 +338,8 @@ while True:
         if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
             library.update(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
+        elif is_in_library:
+            library.update(readers[-1].book_info["url"])
         elif not is_in_library:
             readers[-1].updated = library.start_reading()
             if readers[-1].updated:
