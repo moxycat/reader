@@ -83,10 +83,9 @@ layout = [
 ]
 
 library.init_db()
+library.update_book_info()
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
-
-[library.book_info[k]["info"]["title"] for k in library.book_info.keys()]
 
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
@@ -106,8 +105,17 @@ download_end_time = 0
 
 cats = ["Reading", "Completed", "On-hold", "Dropped", "Plan to read"]
 
+results = [(library.book_info[k]["info"], library.book_info[k]["last_update"]) for k in library.book_info.keys()]
+names = [(textwrap.shorten(library.book_info[k]["info"]["title"], width=50, placeholder="..."), library.book_info[k]["last_update"]) for k in library.book_info.keys()]
+names = sorted(names,
+    key=lambda x: datetime.strptime(x[1], "%b-%d-%Y %H:%M:%S") if x[1] != "unknown" else datetime.fromtimestamp(0), reverse=True)
+results = sorted(results,
+    key=lambda x: datetime.strptime(x[1], "%b-%d-%Y %H:%M:%S") if x[1] != "unknown" else datetime.fromtimestamp(0), reverse=True)
+names = [item[0] for item in names]
+results = [item[0] for item in results]
+wind["book_list"].update(names)
+
 def set_status(text):
-    global wind
     wind["search_statusbar"].update(text)
     wind.refresh()
 
