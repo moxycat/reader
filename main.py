@@ -269,7 +269,7 @@ while True:
             l = len(reader.book_info["chapters"])
             ix = l - reader.chapter_index - 1
             wdetails["details_chapters"].Widget.itemconfigure(ix, bg="yellow")
-            pos = 1.0 - (reader.chapter_index // 15) / (l % 15)
+            pos = 1.0 - ((reader.chapter_index + 1) / len(reader.book_info["chapters"]))
             print(pos)
             wdetails["details_chapters"].set_vscroll_position(pos)
     
