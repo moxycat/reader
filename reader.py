@@ -1,6 +1,9 @@
 import PySimpleGUI as sg
 from io import BytesIO
 from PIL import Image
+from requests_html import HTMLSession
+from threading import Thread
+import imghdr
 
 import mangakatana
 import settings
@@ -12,6 +15,20 @@ def popup_loading():
             sg.Text("Loading...", font=("Consolas", 14))
         ]
     ], modal=True, no_titlebar=True, finalize=True)
+
+class ThreadThatReturns(Thread):
+    def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, Verbose=None):
+        Thread.__init__(self, group, target, name, args, kwargs)
+        self._return = None
+    
+    def run(self):
+        print(type(self._target))
+        if self._target is not None:
+            self._return = self._target(*self._args, **self._kwargs)
+    
+    def join(self, *args):
+        Thread.join(self, *args)
+        return self._return
 
 class ReaderError(Exception): pass
 class ReaderImageDownloadError(ReaderError): pass
@@ -32,20 +49,32 @@ class Reader:
     zoom_level = 1.0 # ...
     zoom_lock = False
 
+
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
         self.max_chapter_index = len(self.book_info["chapters"]) - 1
 
     def __init__(self, book_info: dict = {}):
         if book_info != {}: self.set_book_info(book_info)
+        self.html_session = HTMLSession()
+        self.html_session.browser
+        
 
     # use perform_long_operation with this one or the UI will hang
-    def set_chapter(self, chapter_index : int = -1):
+    def set_chapter(self, chapter_index : int = -1, loop = None):
         if chapter_index != -1: self.chapter_index = chapter_index
-        image_urls = mangakatana.get_manga_chapter_images(self.book_info["chapters"][self.chapter_index]["url"])
+        
+        
+        ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][self.chapter_index]["url"], self.html_session))
+        ttr.start()
+        image_urls = ttr.join()
+        #print(image_urls)
+
+
+
         self.images = mangakatana.download_images(image_urls)
         
-        if None in self.images: return -1
+        #if None in self.images: return -1
 
         if int(settings.settings["reader"]["filter"]) > 0:
             self.images = bluefilter.bulk_bluefilter(self.images, int(settings.settings["reader"]["filter"]))

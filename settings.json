@@ -1,1 +1,1 @@
-{"ui": {"theme": "Light"}, "reader": {"w": "1300", "h": "850", "filter": "0"}, "server": {"source": "2"}}
+{"ui": {"theme": "Light"}, "reader": {"w": "1300", "h": "850", "filter": "0"}, "server": {"source": "1"}, "storage": {"path": "a.db"}}

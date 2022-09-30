@@ -2,8 +2,9 @@
 mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
-import time
+from datetime import datetime
 from io import BytesIO
+from urllib import request
 import requests as r
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
@@ -40,7 +41,7 @@ def get_manga_info(url: str) -> dict:
             {
                 "name": a.text.strip(),
                 "url": a.get("href") + srvr,
-                "date": tr.find("div", {"class": "update_time"}).text.strip()
+                "date": datetime.strptime(tr.find("div", {"class": "update_time"}).text.strip(), "%b-%d-%Y")
             }
         )
     
@@ -191,6 +192,26 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
     
     return (results, nresults)
 
+from requests_html import HTMLSession
+
+def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
+    links = []
+    
+    resp = s.get(url)
+    resp.html.render(timeout=20)
+    
+    page_divs = resp.html.find("div[id^=\"page\"]")
+    for page_div in page_divs:
+        img = page_div.find("img", first=True)
+        print(img.attrs)
+        if img.attrs["src"] == "about:blank":
+            links.append(img.attrs["data-src"])
+        else: links.append(img.attrs["src"])
+    
+    for link in links:
+        print(link)
+    return links
+"""
 def get_manga_chapter_images(url: str) -> list:
     resp = r.get(url)
     if resp.status_code != 200: return None
@@ -203,7 +224,7 @@ def get_manga_chapter_images(url: str) -> list:
     for image in images:
         print(image)
     return images
-
+"""
 def download_images(urls: list) -> list:
     sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
@@ -217,17 +238,19 @@ def download_images(urls: list) -> list:
                         buf.write(await resp.read())
                         resp.close()
                     except:
+                        print(f"{i} failed")
                         pass
                     try:
                         im = Image.open(buf)
+                        #im.verify()
                         im.save(outbuf, "png")
                         results[i] = outbuf.getvalue()
                         im.close()
                         buf.close()
                         outbuf.close()
-                        print(f"{i} done")
-                    except:
-                        print(f"{i} failed")
+                        print(f"{i} done", len(results[i]))
+                    except Exception as e:
+                        print(f"{i} failed ({e})")
             await sesh.close()
         except: pass
     
@@ -236,3 +259,10 @@ def download_images(urls: list) -> list:
     tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]
     loop.run_until_complete(asyncio.wait(tasks))
     return results
+
+import util
+
+def download_images2(urls):
+    results = [None] * len(urls)
+    for url in urls:
+        resp = r.get(url)

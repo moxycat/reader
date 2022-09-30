@@ -26,9 +26,7 @@ def make_window():
                     [sg.Input(key="settings_reader_width", default_text=settings["reader"]["w"], size=(4, 1))],
                     [sg.Input(key="settings_reader_height", default_text=settings["reader"]["h"], size=(4, 1))],
                     [sg.Input(key="settings_bluefilter_perc", default_text=settings["reader"]["filter"], size=(3, 1)), sg.Text("%", pad=0)],
-                ])],
-                
-                [sg.Checkbox("Auto-update chapter progress", default=True, key="settings_reader_autoupdate")]
+                ])]
             ])
         ],
         [
@@ -37,8 +35,9 @@ def make_window():
             ])
         ],
         [
-            sg.Frame("MAL Sync", [
-                [sg.Text("Status: disabled"), sg.Button("Authorize account", key="settings_mal_auth", disabled=True)]
+            sg.Frame("Storage", [
+                [sg.Text("Path to database"), sg.Input(key="settings_storage_db_path", default_text=settings["storage"]["path"], size=(20, 1)), sg.FileBrowse("📁", file_types=(("SQLite3 file", "*.* *"),))],
+                [sg.Button("Create new"), sg.Button("Delete contents", tooltip="This will delete all user data from the currently selected database file!")]            
             ])
         ],
         [sg.Button("Save settings", key="settings_save", tooltip="New settings are applied on restart"), sg.Button("Cancel", key="settings_cancel")]
