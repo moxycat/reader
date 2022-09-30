@@ -65,7 +65,7 @@ search_controls = [
                 [sg.Text(key="preview_status")],
                 [sg.Text(key="preview_latest")],
                 [sg.Text(key="preview_update")],
-                [sg.HSeparator()],
+                #[sg.HSeparator()],
                 [sg.Multiline(key="preview_desc", disabled=True, background_color="white", size=(50, 15), visible=False)],
                 [
                     sg.Button("Continue reading", key="read_continue", visible=False),
