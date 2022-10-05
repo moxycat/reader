@@ -177,10 +177,12 @@ while True:
             continue
         wind["search_status"].update("Searching...")
         set_status("Searching...")
+        w["search_bar"].update(disabled=True)
         wind.refresh()
         wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
 
     if e == "search_got_results":
+        w["search_bar"].update(disabled=False)
         results = v[e]
         if results is None:
             wind["search_status"].update("Found nothing.")
@@ -241,7 +243,7 @@ while True:
         wind["details"].update(visible=True)
         try:
             print(results[book_list_ix]["cover_url"])
-            cover = requests.get(results[book_list_ix]["cover_url"], stream=True)
+            cover = requests.get(reader.book_info["cover_url"], stream=True)
             if cover.status_code != 200: raise Exception
             im = Image.open(cover.raw)
         except:
@@ -400,6 +402,15 @@ while True:
         library.clear_search(wreadlist[tabtable[tab]])
         if q == "": continue
         library.search(q, wreadlist[tabtable[tab]])
+    
+    if e == "tab_group":
+        q = v["lib_search_query"]
+        tab = v["tab_group"]
+
+        library.get_original(wreadlist[tabtable[tab]])
+        library.clear_search(wreadlist[tabtable[tab]])
+        if q == "": continue
+        library.search(q, wreadlist[tabtable[tab]])
 
     if w == wreadlist and e == "Edit":
         tab = v["tab_group"]
@@ -430,6 +441,22 @@ while True:
         wreadlist["lib_tree_drop"].update(tds[3])
         wreadlist["lib_tree_ptr"].update(tds[4])
         wreadlist.refresh()
+    
+    if w == wreadlist and e == "Show in search":
+        tab = v["tab_group"]
+        url = v[tabtable[tab]][0]
+        print(tab, url)
+        set_status("Fetching book information...")
+        
+        wind.perform_long_operation(lambda: mangakatana.get_manga_info(v[tabtable[tab]][0]), "book_list_got_info")
+    
+    if w == wreadlist and e == "View chapters":
+        tab = v["tab_group"]
+        url = v[tabtable[tab]][0]
+        # finish this part
+
+
+
     
     if w == wreadlist and e in cats:
         tab = v["tab_group"]
