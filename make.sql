@@ -57,3 +57,9 @@ CREATE TABLE books_ptr (
     score text not null default "0",
     last_update text not null default "unknown"
 );
+
+CREATE TABLE history (
+    id int primary key,
+    ts date,
+    
+)

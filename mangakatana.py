@@ -12,6 +12,8 @@ import asyncio, aiohttp
 import re
 import settings
 
+stop_search = False
+
 def get_manga_info(url: str) -> dict:
     resp = r.get(url)
     if resp.status_code != 200: return {}
@@ -116,6 +118,7 @@ def search(query: str, search_by: int = 0) -> list:
     results = []
     
     while added != nresults:
+        if stop_search: return None
         for book in books:
             title = book.find("h3", {"class": "title"}).find("a").text.strip()
             a = book.find("div", {"class": "wrap_img"}).find("a")
@@ -125,9 +128,7 @@ def search(query: str, search_by: int = 0) -> list:
             added += 1
         if added != nresults: page += 1
         else: break
-        #print(results)
         url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
-        print(url)
         
         resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
         if resp.status_code != 200: return None
@@ -253,6 +254,8 @@ def download_images(urls: list) -> list:
             await sesh.close()
         except: pass
     
+    
+    #old = 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]

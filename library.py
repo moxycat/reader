@@ -91,16 +91,19 @@ def is_in_lib(url):
         if len(rows) > 0: return (True, rows[0], i)
     return (False, None, None)
 
-def update_book_info():
+def update_book_info(update_info=True, url=None):
     global book_info
     book_info.clear()
     
-    for x in tables:
-        cur.execute("SELECT * FROM {};".format(x))
-        rows = cur.fetchall()
-        for row in rows:
-            info = mangakatana.get_manga_info(row[0])
-            book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": x})
+    query = "select *, \"books_cmpl\" from books_cmpl {} union all select *, \"books_cr\" from books_cr {} union all select *, \"books_idle\" from books_idle {} union all select *, \"books_drop\" from books_drop {} union all select *, \"books_ptr\" from books_ptr {};"
+
+    cur.execute("select *, \"books_cmpl\" from books_cmpl union all select *, \"books_cr\" from books_cr union all select *, \"books_idle\" from books_idle union all select *, \"books_drop\" from books_drop union all select *, \"books_ptr\" from books_ptr;")
+    rows = cur.fetchall()
+    for row in rows:
+            if update_info == True:
+                info = mangakatana.get_manga_info(row[0])
+            else: info = {}
+            book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": row[7]})
 
     book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
 
@@ -108,18 +111,15 @@ def download_thumbnails():
     global thumbnails
     thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
     try:
-        requests.get(thumbnail_urls[0])
-        itworks = True
+        thumbnails = mangakatana.download_images(thumbnail_urls)
+        return True
     except:
         thumbnails = [None] * len(thumbnail_urls)
-        itworks = False
-    
-    if itworks: thumbnails = mangakatana.download_images(thumbnail_urls)
+        return False
 
 def make_treedata(refresh=False):
     global thumbnails
     update_book_info()
-    td = sg.TreeData()
     tds = [sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData()]
 
     if not refresh: download_thumbnails()
@@ -156,12 +156,18 @@ def make_treedata(refresh=False):
             # thumbnail
             outbuf.getvalue(),
             )
+        #if v["start_date"] != "unknown":
+        #    dssr = (datetime.now() - datetime.strptime(v["start_date"], "%Y-%m-%d")).days
+        #else: dssr = "unknown"
+        #tds[ix].insert(k, k + "_more", "", [
+        #    "Days since started reading: {}\nLast updated: {}\n".format(dssr, v["last_update"])
+        #])
     
     return tds
 
 def make_window():
     global thumbnails
-    update_book_info()
+    #update_book_info()
     
     tds = make_treedata()
 
@@ -170,7 +176,7 @@ def make_window():
     tab_cr_layout = [
         [
             TreeRtClick(
-                data=tds[0], headings=["Title", "Score", "Chapters", "Volumes", "Last update"], col0_heading="",
+                data=tds[0], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_cr", row_height=30, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
@@ -181,7 +187,7 @@ def make_window():
     tab_cmpl_layout = [
         [
             TreeRtClick(
-                data=tds[1], headings=["Title", "Score", "Chapters", "Volumes", "Last update"], col0_heading="",
+                data=tds[1], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_cmpl", row_height=30, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
@@ -192,7 +198,7 @@ def make_window():
     tab_idle_layout = [
         [
             TreeRtClick(
-                data=tds[2], headings=["Title", "Score", "Chapters", "Volumes", "Last update"], col0_heading="",
+                data=tds[2], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_idle", row_height=30, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
@@ -203,7 +209,7 @@ def make_window():
     tab_drop_layout = [
         [
             TreeRtClick(
-                data=tds[3], headings=["Title", "Score", "Chapters", "Volumes", "Last update"], col0_heading="",
+                data=tds[3], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_drop", row_height=30, num_rows=5, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
@@ -214,7 +220,7 @@ def make_window():
     tab_ptr_layout = [
         [
             TreeRtClick(
-                data=tds[4], headings=["Title", "Score", "Chapters", "Volumes", "Last update"], col0_heading="",
+                data=tds[4], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_ptr", row_height=30, num_rows=5, enable_events=True,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
@@ -230,6 +236,7 @@ def make_window():
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
         ],
+        [sg.Text("Order by"), sg.Combo(["Title", "Score", "Chapters", "Volumes", "Latest upload"])],
         [
             sg.TabGroup([
                 [
@@ -256,7 +263,8 @@ def start_reading():
     w.close()
     return ans
 
-def edit_chapter_progress(url):
+def edit_chapter_progress(url, update_before_opening=False):
+    if update_before_opening: update_book_info()
     max_ch = len(book_info[url]["info"]["chapters"])
     layout = [
         [
@@ -313,7 +321,9 @@ def edit_chapter_progress(url):
             w["lib_edit_start_date"].update(datetime.strftime(today, "%b-%d-%Y"))
         
         if e == "lib_edit_sd_pick":
-            m, d, y = sg.popup_get_date(no_titlebar=True, keep_on_top=True, close_when_chosen=True)
+            ret = sg.popup_get_date(no_titlebar=False, keep_on_top=True, close_when_chosen=True)
+            if ret == None: continue
+            else: m, d, y = ret
             date = datetime(y, m, d)
             w["lib_edit_start_date"].update(datetime.strftime(date, "%b-%d-%Y"))
         
@@ -322,7 +332,9 @@ def edit_chapter_progress(url):
             w["lib_edit_end_date"].update(datetime.strftime(today, "%b-%d-%Y"))
 
         if e == "lib_edit_ed_pick":
-            m, d, y = sg.popup_get_date(no_titlebar=True, keep_on_top=True, close_when_chosen=True)
+            ret = sg.popup_get_date(no_titlebar=False, keep_on_top=True, close_when_chosen=True)
+            if ret == None: continue
+            else: m, d, y = ret
             date = datetime(y, m, d)
             w["lib_edit_end_date"].update(datetime.strftime(date, "%b-%d-%Y"))
 
@@ -385,7 +397,7 @@ def search(query, tr: TreeRtClick):
     for id, url in tr.IdToKey.items():
         if url == "": continue
         #if query not in book_info[url]["info"]["title"].lower():
-        if re.match(query, book_info[url]["info"]["title"].lower()) is not None:
+        if re.match(query, book_info[url]["info"]["title"].lower()) is None:
             ix = tr.Widget.index(id)
             removed.append((ix, id))
     print(removed)

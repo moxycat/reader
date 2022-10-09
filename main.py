@@ -29,7 +29,7 @@ def popup_loading():
         ]
     ], modal=True, no_titlebar=True, finalize=True)
 
-menu = [["&Readers", []], ["&Library", ["&Reading list", "Favourites"]], ["&Settings", ["&Preferences", "&Help"]]]
+menu = [["&Readers", []], ["&Library", ["&Open library", "&History"]], ["&Settings", ["&Preferences", "&Help"]]]
 
 search_controls = [
     [
@@ -38,7 +38,8 @@ search_controls = [
     [
         sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white"),
         sg.Input("", key="search_bar", size=(90, 1), focus=True, expand_x=True),
-        sg.Button("⌕", key="search", bind_return_key=True)
+        sg.Button("⌕", key="search", bind_return_key=True),
+        sg.Button("x", key="search_cancel")
     ],
     [sg.Text("", key="search_status", size=(90, 1))],
     [sg.HSeparator()],
@@ -54,7 +55,8 @@ search_controls = [
             [
                 [sg.Text(key="preview_title", font="Consolas 14 underline", visible=False)],
                 [sg.Image(key="preview_image")],
-                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True, background_color="white", button_background_color="white"), sg.Button("Add to list", key="add_to_list", visible=False)],
+                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True, background_color="white"), sg.Button("Add to list", key="add_to_list", visible=False)],
+                [sg.Button("Edit details", key="preview_edit_details", visible=False)]
             ], key="preview_col_0")
         ),
         #sg.VSeparator(),
@@ -82,11 +84,14 @@ layout = [
     [sg.StatusBar("No activity", enable_events=True, key="search_statusbar", size=(50, 1))]
 ]
 
+print("init db")
 library.init_db()
+print("updating book info")
 library.update_book_info()
+print("done")
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
-
+wind.bind("<FocusIn>", "main_focusin")
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
 
@@ -102,6 +107,8 @@ which_list = 0
 rows = []
 download_start_time = 0
 download_end_time = 0
+searcher_thread = None
+
 
 cats = ["Reading", "Completed", "On-hold", "Dropped", "Plan to read"]
 
@@ -179,12 +186,21 @@ while True:
         set_status("Searching...")
         w["search_bar"].update(disabled=True)
         wind.refresh()
-        wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
+        mangakatana.stop_search = False
+        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
+
+    if e == "search_cancel":
+        if searcher_thread is not None:
+            wind["search_status"].update("Cancelling search...")
+            mangakatana.stop_search = True
 
     if e == "search_got_results":
         w["search_bar"].update(disabled=False)
         results = v[e]
         if results is None:
+            wind["search_status"].update("Search cancelled.")
+            continue
+        if results == []:
             wind["search_status"].update("Found nothing.")
             wind["book_list"].update([])
             continue
@@ -200,15 +216,23 @@ while True:
             ix = wind["book_list"].get_indexes()[0]
         except: continue
         url = results[ix]["url"]
-        book_list_ix = ix
         set_status("Fetching book information...")
         
         wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
 
-    if e == "book_list_got_info":    
+    if e == "main_focusin":
+        continue
+        try:
+            url = reader.book_info["url"]
+        except: continue
+        wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
+
+    if e == "book_list_got_info":
         set_status("Fetched book information!")
-        reader.set_book_info(v[e])
-        
+        try:
+            reader.set_book_info(v[e])
+        except: continue
+
         wind["preview_author"].update("Author:         " + reader.book_info["author"])
         genres = ""
         for i, g in enumerate(reader.book_info["genres"]):
@@ -226,6 +250,7 @@ while True:
         is_in_library, rows, which_list = library.is_in_lib(reader.book_info["url"])
         if is_in_library:
             wind["add_to_list"].update(visible=False)
+            wind["preview_edit_details"].update(visible=True)
             wind["preview_book_list"].update(visible=True, value=cats[which_list])
             ix = int(rows[1])
             wind["read_continue"].update(
@@ -238,11 +263,11 @@ while True:
             wind["read_continue"].update(visible=False)
             wind["add_to_list"].update(visible=True)
             wind["preview_book_list"].update(visible=False)
+            wind["preview_edit_details"].update(visible=False)
         
         wind["read_latest"].update(visible=True)
         wind["details"].update(visible=True)
         try:
-            print(results[book_list_ix]["cover_url"])
             cover = requests.get(reader.book_info["cover_url"], stream=True)
             if cover.status_code != 200: raise Exception
             im = Image.open(cover.raw)
@@ -301,7 +326,6 @@ while True:
         wloading = popup_loading()
         wloading.read(timeout=0)
         print(readers[-1].book_info["chapters"][readers[-1].chapter_index]["url"])
-        #images = mangakatana.get_manga_chapter_images(readers[-1].book_info["chapters"][ix]["url"])
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
         wdetails.close()
 
@@ -325,12 +349,10 @@ while True:
             readers[-1].book_info["chapters"][reader.chapter_index]["name"]))
         wind["menu"].update(menu)
 
-        #print(menu[0])
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
         wloading = popup_loading()
         wloading.read(timeout=0)
-        #readers[-1].page_index = reader.page_index
         wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
     
     if e == "open_reader":
@@ -356,6 +378,9 @@ while True:
                 library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, datetime.today().strftime("%Y-%m-%d"), "unknown", "0", to=library.BookStatus.READING)
         readers[-1].make_window()
         readers[-1].set_page(0)
+    
+    if e == "preview_edit_details":
+        library.edit_chapter_progress(reader.book_info["url"], True)
 
     if e == "Save screenshot":
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
@@ -366,20 +391,24 @@ while True:
         im.save(filename, "png")
         im.close()
     
-    if e == "Reading list":
+    if e == "Open library":
         if wreadlist is not None:
             wreadlist.un_hide()
             wreadlist.bring_to_front()
         else:
-            wloading = popup_loading()
-            wloading.read(timeout=0)
-            wind.perform_long_operation(library.make_window, "lib_window_made")
+            try:
+                wloading = popup_loading()
+                wloading.read(timeout=0)
+                wind.perform_long_operation(library.make_window, "lib_window_made")
+            except:
+                wloading.close()
+                sg.popup("Failed to load library.", title="Error", keep_on_top=True)
 
     if e == "lib_window_made":
         if wloading is not None: wloading.close()
         layout = v[e]
-        wreadlist = sg.Window("Reading list", layout, finalize=True, element_justification="l")
-        # idk why this happens but when you double click an event gets generated for the tree AND the double click but they get merged into one
+        wreadlist = sg.Window("Library", layout, finalize=True, element_justification="l")
+
         wreadlist["lib_tree_cr"].bind("<Double-Button-1>", "_open_book")
         wreadlist["lib_tree_cmpl"].bind("<Double-Button-1>", "_open_book")
         wreadlist["lib_tree_idle"].bind("<Double-Button-1>", "_open_book")
@@ -413,26 +442,30 @@ while True:
         library.search(q, wreadlist[tabtable[tab]])
 
     if w == wreadlist and e == "Edit":
-        tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
-        ret = library.edit_chapter_progress(url)
-        if ret == False: continue
-        tds = library.make_treedata(True)
-        wreadlist["lib_tree_cr"].update(tds[0])
-        wreadlist["lib_tree_cmpl"].update(tds[1])
-        wreadlist["lib_tree_idle"].update(tds[2])
-        wreadlist["lib_tree_drop"].update(tds[3])
-        wreadlist["lib_tree_ptr"].update(tds[4])
-        wreadlist.refresh()
-        library.get_original(wreadlist[tabtable[tab]])
-        q = v["lib_search_query"]
-        library.clear_search(wreadlist[tabtable[tab]])
-        if q == "": continue
-        library.search(q, wreadlist[tabtable[tab]])
+        try:
+            tab = v["tab_group"]
+            url = v[tabtable[tab]][0]
+            ret = library.edit_chapter_progress(url)
+            if ret == False: continue
+            tds = library.make_treedata(True)
+            wreadlist["lib_tree_cr"].update(tds[0])
+            wreadlist["lib_tree_cmpl"].update(tds[1])
+            wreadlist["lib_tree_idle"].update(tds[2])
+            wreadlist["lib_tree_drop"].update(tds[3])
+            wreadlist["lib_tree_ptr"].update(tds[4])
+            wreadlist.refresh()
+            library.get_original(wreadlist[tabtable[tab]])
+            q = v["lib_search_query"]
+            library.clear_search(wreadlist[tabtable[tab]])
+            if q == "": continue
+            library.search(q, wreadlist[tabtable[tab]])
+        except: continue
     
     if w == wreadlist and e == "Remove":
         tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
+        try:
+            url = v[tabtable[tab]][0]
+        except: continue
         library.delete(url)
         tds = library.make_treedata(True)
         wreadlist["lib_tree_cr"].update(tds[0])
@@ -444,8 +477,9 @@ while True:
     
     if w == wreadlist and e == "Show in search":
         tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
-        print(tab, url)
+        try:
+            url = v[tabtable[tab]][0]
+        except: continue
         set_status("Fetching book information...")
         
         wind.perform_long_operation(lambda: mangakatana.get_manga_info(v[tabtable[tab]][0]), "book_list_got_info")
@@ -460,15 +494,18 @@ while True:
     
     if w == wreadlist and e in cats:
         tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
-        library.move(url, src=list(tabtable.keys()).index(tab), dest=cats.index(e))
-        tds = library.make_treedata(True)
-        wreadlist["lib_tree_cr"].update(tds[0])
-        wreadlist["lib_tree_cmpl"].update(tds[1])
-        wreadlist["lib_tree_idle"].update(tds[2])
-        wreadlist["lib_tree_drop"].update(tds[3])
-        wreadlist["lib_tree_ptr"].update(tds[4])
-        wreadlist.refresh()
+        print(tab)
+        try:
+            url = v[tabtable[tab]][0]
+            library.move(url, src=list(tabtable.keys()).index(tab), dest=cats.index(e))
+            tds = library.make_treedata(True)
+            wreadlist["lib_tree_cr"].update(tds[0])
+            wreadlist["lib_tree_cmpl"].update(tds[1])
+            wreadlist["lib_tree_idle"].update(tds[2])
+            wreadlist["lib_tree_drop"].update(tds[3])
+            wreadlist["lib_tree_ptr"].update(tds[4])
+            wreadlist.refresh()
+        except: continue
     
     if w == wreadlist and e == "Refresh":
         wreadlist.close()
@@ -476,12 +513,17 @@ while True:
     
     if e in [v + "_open_book" for _, v in tabtable.items()]:
         tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
+        print(tab)
+        try:
+            url = v[tabtable[tab]][0]
+        except: continue
         print(url)
         wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "lib_open_book")
     
     if e == "lib_open_book":
-        reader.set_book_info(v[e])
+        try:
+            reader.set_book_info(v[e])
+        except: continue
         is_in_library, rows, which_list = library.is_in_lib(reader.book_info["url"])
         if is_in_library:
             ix = int(rows[1])
@@ -494,7 +536,11 @@ while True:
         wreadlist = None
     
     if e == "Preferences":
-        wsettings = settings.make_window()
+        if wsettings is not None:
+            wsettings.un_hide()
+            wsettings.bring_to_front()
+        else:
+            wsettings = settings.make_window()
     
     if e == "settings_save":
         d = {
