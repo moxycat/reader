@@ -60,6 +60,8 @@ CREATE TABLE books_ptr (
 
 CREATE TABLE history (
     id int primary key,
-    ts date,
+    time text not null,
+    event text not null,
+    related_book text,
     
 )

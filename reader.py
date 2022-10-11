@@ -35,20 +35,19 @@ class ReaderImageDownloadError(ReaderError): pass
 class ReaderInfoError(ReaderError): pass
 
 class Reader:
-    window = None # window object
-    popup_window = None # popup window object (for showing the loading popup)
-    updated = False # does this book get updated in the library
-    images = [] # array of each page's image data
-    book_info = {} # info about book
-    chapter_index = 0 # current chapter's index
-    max_chapter_index = 0 # ...
-    max_page_index = 0 # ...
-    page_index = 0 # current page's index
-    vscroll = 0 # vertical scroll position
-    hscroll = 0 # horizontal scroll position
-    zoom_level = 1.0 # ...
-    zoom_lock = False
-
+    window: sg.Window = None # window object
+    popup_window: sg.Window = None # popup window object (for showing the loading popup)
+    updated: bool = False # does this book get updated in the library
+    images: list[bytes] = [] # array of each page's image data
+    book_info: dict = {} # info about book
+    chapter_index: int = 0 # current chapter's index
+    max_chapter_index: int = 0 # ...
+    max_page_index: int = 0 # ...
+    page_index: int = 0 # current page's index
+    vscroll: float = 0 # vertical scroll position
+    hscroll: float = 0 # horizontal scroll position
+    zoom_level: float = 1.0 # ...
+    zoom_lock: bool = False
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info
@@ -58,30 +57,23 @@ class Reader:
         if book_info != {}: self.set_book_info(book_info)
         self.html_session = HTMLSession()
         self.html_session.browser
-        
 
     # use perform_long_operation with this one or the UI will hang
     def set_chapter(self, chapter_index : int = -1, loop = None):
         if chapter_index != -1: self.chapter_index = chapter_index
         
-        
         ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][self.chapter_index]["url"], self.html_session))
         ttr.start()
         image_urls = ttr.join()
-        #print(image_urls)
-
-
-
+        if None in image_urls: return False
         self.images = mangakatana.download_images(image_urls)
-        
-        #if None in self.images: return -1
-
+        if None in self.images: return False
         if int(settings.settings["reader"]["filter"]) > 0:
             self.images = bluefilter.bulk_bluefilter(self.images, int(settings.settings["reader"]["filter"]))
         self.max_page_index = len(self.images) - 1
+        return True
 
     def check_if_mini(self, event):
-        #print(self.window.TKroot.state())
         if self.window.TKroot.state() == "iconic":
             self.window.write_event_value("reader_mini", "")
 
@@ -105,7 +97,7 @@ class Reader:
         layout = [
             [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
             [sg.Column([
-                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0)]
+                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Text(), sg.Button("Cache next ch.", key="reader_cache")]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
             [sg.HSeparator()],
             [
@@ -277,3 +269,5 @@ class Reader:
             self.refresh()
         if event == "reader_zoom_in": self.set_zoom(0.25)
         if event == "reader_zoom_out": self.set_zoom(-0.25)
+        if event == "reader_cache":
+            pass

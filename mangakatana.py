@@ -10,7 +10,10 @@ from urllib.parse import quote_plus
 from PIL import Image
 import asyncio, aiohttp
 import re
-import settings
+
+import settings, util
+
+from requests_html import HTMLSession
 
 stop_search = False
 
@@ -192,18 +195,16 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
     
     return (results, nresults)
 
-from requests_html import HTMLSession
-
 def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     links = []
     
     resp = s.get(url)
-    resp.html.render(timeout=20)
+    resp.html.render(timeout=60)
     
     page_divs = resp.html.find("div[id^=\"page\"]")
     for page_div in page_divs:
         img = page_div.find("img", first=True)
-        print(img.attrs)
+        #print(img.attrs)
         if img.attrs["src"] == "about:blank":
             links.append(img.attrs["data-src"])
         else: links.append(img.attrs["src"])
@@ -211,55 +212,29 @@ def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     for link in links:
         print(link)
     return links
-"""
-def get_manga_chapter_images(url: str) -> list:
-    resp = r.get(url)
-    if resp.status_code != 200: return None
-    images = re.findall("var thzq=\[('.+'),\];", resp.text)
-    print(images)
-    images = images[0].replace("'", "").split(",")
-    images = list(filter(lambda item: item is not None, images))
-    images = [image[image.find("https://"):]for image in images]
-    images = list(dict.fromkeys(images))
-    for image in images:
-        print(image)
-    return images
-"""
+
 def download_images(urls: list) -> list:
     sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
     async def fetch(url: str, i: int):
+        if url is None: return None
         try:
             async with sem, aiohttp.ClientSession() as sesh:
                 async with sesh.get(url) as resp:
-                    buf = BytesIO()
-                    outbuf = BytesIO()
                     try:
-                        buf.write(await resp.read())
+                        results[i] = util.pngify(await resp.read())
                         resp.close()
-                    except:
-                        print(f"{i} failed")
-                        pass
-                    try:
-                        im = Image.open(buf)
-                        #im.verify()
-                        im.save(outbuf, "png")
-                        results[i] = outbuf.getvalue()
-                        im.close()
-                        buf.close()
-                        outbuf.close()
                         print(f"{i} done", len(results[i]))
                     except Exception as e:
                         print(f"{i} failed ({e})")
             await sesh.close()
         except: pass
     
-    
-    #old = 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     tasks = [loop.create_task(fetch(url, i)) for i, url in enumerate(urls)]
     loop.run_until_complete(asyncio.wait(tasks))
+    loop.close() #???
     return results
 
 import util

@@ -13,6 +13,16 @@ from reader import Reader
 def myround(x, prec=2, base=.05):
   return round(base * round(float(x) / base), prec)
 
+
+tabtable = {
+    "tab_reading": "lib_tree_cr",
+    "tab_completed": "lib_tree_cmpl",
+    "tab_onhold": "lib_tree_idle",
+    "tab_dropped": "lib_tree_drop",
+    "tab_ptr": "lib_tree_ptr"
+}
+    
+
 settings.read_settings()
 
 if settings.settings["ui"]["theme"] == "Dark":
@@ -164,6 +174,8 @@ while True:
             print("updating...")
             if readers[ix].updated:
                 library.update(readers[ix].book_info["url"], ch=readers[ix].chapter_index)
+                if readers[ix].book_info["url"] == reader.book_info["url"]:
+                    wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
             print("done")
     
     menu_clean = [a.replace("&", "") for a in menu[0][1]]
@@ -171,8 +183,10 @@ while True:
     if e in menu_clean:
         ix = menu_clean.index(e)
         print(ix)
-        readers[ix].window.un_hide()
-        readers[ix].window.bring_to_front()
+        try:
+            readers[ix].window.un_hide()
+            readers[ix].window.bring_to_front()
+        except: continue
 
     if w == wind and e == sg.WIN_CLOSED: break
     
@@ -254,7 +268,7 @@ while True:
             wind["preview_book_list"].update(visible=True, value=cats[which_list])
             ix = int(rows[1])
             wind["read_continue"].update(
-                text="[{}]".format(textwrap.shorten(reader.book_info["chapters"][ix]["name"], width=25, placeholder="...")),
+                text="[{}]".format(textwrap.shorten(reader.book_info["chapters"][ix]["name"], width=20, placeholder="...")),
                 visible=True)
             wind["read_continue"].set_tooltip(reader.book_info["chapters"][ix]["name"])
             reader.chapter_index = ix
@@ -323,9 +337,12 @@ while True:
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
-        wloading = popup_loading()
-        wloading.read(timeout=0)
-        print(readers[-1].book_info["chapters"][readers[-1].chapter_index]["url"])
+        #wloading = popup_loading()
+        #wloading.read(timeout=0)
+        wind["read_continue"].update(disabled=True)
+        wind["read_latest"].update(disabled=True)
+        wind["details"].update(disabled=True)
+        #print(readers[-1].book_info["chapters"][readers[-1].chapter_index]["url"])
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
         wdetails.close()
 
@@ -339,8 +356,11 @@ while True:
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
-        wloading = popup_loading()
-        wloading.read(timeout=0)
+        #wloading = popup_loading()
+        #wloading.read(timeout=0)
+        wind["read_continue"].update(disabled=True)
+        wind["read_latest"].update(disabled=True)
+        wind["details"].update(disabled=True)
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
     
     if e == "read_continue":
@@ -351,14 +371,19 @@ while True:
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
-        wloading = popup_loading()
-        wloading.read(timeout=0)
+        #wloading = popup_loading()
+        #wloading.read(timeout=0)
+        wind["read_continue"].update(disabled=True)
+        wind["read_latest"].update(disabled=True)
+        wind["details"].update(disabled=True)
         wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
     
     if e == "open_reader":
-        print(v["open_reader"])
-        if v["open_reader"] == -1:
-            wloading.close()
+        wind["read_continue"].update(disabled=False)
+        wind["read_latest"].update(disabled=False)
+        wind["details"].update(disabled=False)
+        if v[e] == False:
+            #wloading.close()
             del readers[-1]
             del menu[0][1][-1]
             wind["menu"].update(menu)
@@ -370,17 +395,33 @@ while True:
         if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
             library.update(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
+            if wreadlist is not None:
+                print("updating entry...")
+                url = readers[-1].book_info["url"]
+                #print("DASDJASJDKASDJASKDJKAS: ", [x[1] for x in tabtable.items()][which_list])
+                wreadlist[[x[1] for x in tabtable.items()][which_list]].update(key=url, value=[
+                    textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
+                    library.book_info[url]["score"],
+                    "{}/{}".format(
+                        str(int(library.book_info[url]["ch"]) + 1).zfill(2),
+                        str(len(library.book_info[url]["info"]["chapters"])).zfill(2) if library.book_info[url]["info"]["status"] == "Completed" else "[" + str(len(library.book_info[url]["info"]["chapters"])).zfill(2) + "]"
+                    ),
+                    library.book_info[url]["vol"],
+                    str((datetime.now() - library.book_info[url]["info"]["chapters"][-1]["date"]).days) + " days ago"
+                ])
+                wreadlist.refresh()
         elif is_in_library:
             library.update(readers[-1].book_info["url"])
         elif not is_in_library:
             readers[-1].updated = library.start_reading()
             if readers[-1].updated:
-                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, datetime.today().strftime("%Y-%m-%d"), "unknown", "0", to=library.BookStatus.READING)
+                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, datetime.today().strftime("%Y-%m-%d"), "unknown", "0", where=library.BookStatus.READING)
+                # update lib interface if open
         readers[-1].make_window()
         readers[-1].set_page(0)
     
     if e == "preview_edit_details":
-        library.edit_chapter_progress(reader.book_info["url"], True)
+        library.edit_chapter_progress(reader.book_info["url"])
 
     if e == "Save screenshot":
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
@@ -416,13 +457,6 @@ while True:
         wreadlist["lib_tree_ptr"].bind("<Double-Button-1>", "_open_book")
         library.get_original(wreadlist["lib_tree_cr"])
     
-    tabtable = {
-            "tab_reading": "lib_tree_cr",
-            "tab_completed": "lib_tree_cmpl",
-            "tab_onhold": "lib_tree_idle",
-            "tab_dropped": "lib_tree_drop",
-            "tab_ptr": "lib_tree_ptr"}
-    
     if e == "lib_search":
         q = v["lib_search_query"]
         tab = v["tab_group"]
@@ -447,33 +481,42 @@ while True:
             url = v[tabtable[tab]][0]
             ret = library.edit_chapter_progress(url)
             if ret == False: continue
-            tds = library.make_treedata(True)
-            wreadlist["lib_tree_cr"].update(tds[0])
-            wreadlist["lib_tree_cmpl"].update(tds[1])
-            wreadlist["lib_tree_idle"].update(tds[2])
-            wreadlist["lib_tree_drop"].update(tds[3])
-            wreadlist["lib_tree_ptr"].update(tds[4])
+            wreadlist[tabtable[tab]].update(key=url, value=[
+                textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
+                library.book_info[url]["score"],
+                "{}/{}".format(
+                    str(int(library.book_info[url]["ch"]) + 1).zfill(2),
+                    str(len(library.book_info[url]["info"]["chapters"])).zfill(2) if library.book_info[url]["info"]["status"] == "Completed" else "[" + str(len(library.book_info[url]["info"]["chapters"])).zfill(2) + "]"
+                ),
+                library.book_info[url]["vol"],
+                str((datetime.now() - library.book_info[url]["info"]["chapters"][-1]["date"]).days) + " days ago"
+            ])
+
             wreadlist.refresh()
+            if url == reader.book_info["url"]:
+                wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
             library.get_original(wreadlist[tabtable[tab]])
             q = v["lib_search_query"]
             library.clear_search(wreadlist[tabtable[tab]])
             if q == "": continue
             library.search(q, wreadlist[tabtable[tab]])
-        except: continue
+            print("=" * 50)
+        except Exception as e:
+            print(e)
+            continue
     
     if w == wreadlist and e == "Remove":
         tab = v["tab_group"]
         try:
             url = v[tabtable[tab]][0]
         except: continue
+        
         library.delete(url)
-        tds = library.make_treedata(True)
-        wreadlist["lib_tree_cr"].update(tds[0])
-        wreadlist["lib_tree_cmpl"].update(tds[1])
-        wreadlist["lib_tree_idle"].update(tds[2])
-        wreadlist["lib_tree_drop"].update(tds[3])
-        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist[tabtable[tab]].delete_selected()
         wreadlist.refresh()
+        print(url, reader.book_info["url"])
+        if url == reader.book_info["url"]:
+            wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
     
     if w == wreadlist and e == "Show in search":
         tab = v["tab_group"]
@@ -489,24 +532,31 @@ while True:
         url = v[tabtable[tab]][0]
         # finish this part
 
-
-
-    
+    # move
     if w == wreadlist and e in cats:
         tab = v["tab_group"]
         print(tab)
         try:
             url = v[tabtable[tab]][0]
             library.move(url, src=list(tabtable.keys()).index(tab), dest=cats.index(e))
-            tds = library.make_treedata(True)
-            wreadlist["lib_tree_cr"].update(tds[0])
-            wreadlist["lib_tree_cmpl"].update(tds[1])
-            wreadlist["lib_tree_idle"].update(tds[2])
-            wreadlist["lib_tree_drop"].update(tds[3])
-            wreadlist["lib_tree_ptr"].update(tds[4])
-            wreadlist.refresh()
+            print(url, reader.book_info["url"])
+            if url == reader.book_info["url"]:
+                wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
+            wloading = popup_loading()
+            wloading.read(timeout=0)
+            wind.perform_long_operation(lambda: library.make_treedata(True), "library_moved")
         except: continue
     
+    if e == "library_moved":
+        wloading.close()
+        tds = v[e]
+        wreadlist["lib_tree_cr"].update(tds[0])
+        wreadlist["lib_tree_cmpl"].update(tds[1])
+        wreadlist["lib_tree_idle"].update(tds[2])
+        wreadlist["lib_tree_drop"].update(tds[3])
+        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.refresh()
+        
     if w == wreadlist and e == "Refresh":
         wreadlist.close()
         wind.perform_long_operation(library.make_window, "lib_window_made")
@@ -563,13 +613,16 @@ while True:
             f.write(json.dumps(d))
         settings.read_settings() # refresh
         wsettings.close()
+        wsettings = None
     
     if e == "settings_cancel":
         wsettings.close()
+        wsettings = None
     
     if w == wsettings and e == sg.WIN_CLOSED:
         wsettings.close()
-    
+        wsettings = None
+        
     if w == wind and e == "Help":
         print("All of the free manga found on this app are hosted on third-party servers that are freely available to read online for all internet users. Any legal issues regarding the free manga should be taken up with the actual file hosts themselves, as we're not affiliated with them. Copyrights and trademarks for the manga, and other promotional materials are held by their respective owners and their use is allowed under the fair use clause of the Copyright Law.")
 

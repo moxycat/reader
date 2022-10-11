@@ -4,7 +4,6 @@ import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
-import requests
 import re
 
 import mangakatana, settings
@@ -31,6 +30,12 @@ class TreeRtClick(sg.Tree):
         item = tree.identify_row(event.y)
         tree.selection_set(item)
         super()._RightClickMenuCallback(event)
+        t = sg.Tree()
+    
+    def delete_selected(self):
+        sel = self.Widget.selection()
+        for item in sel:
+            self.Widget.delete(item)
 
 def init_db():
     global conn, cur
@@ -91,19 +96,21 @@ def is_in_lib(url):
         if len(rows) > 0: return (True, rows[0], i)
     return (False, None, None)
 
-def update_book_info(update_info=True, url=None):
+def update_book_info(url=None):
     global book_info
     book_info.clear()
     
-    query = "select *, \"books_cmpl\" from books_cmpl {} union all select *, \"books_cr\" from books_cr {} union all select *, \"books_idle\" from books_idle {} union all select *, \"books_drop\" from books_drop {} union all select *, \"books_ptr\" from books_ptr {};"
+    query = "select *, \"books_cmpl\" from books_cmpl union all select *, \"books_cr\" from books_cr union all select *, \"books_idle\" from books_idle union all select *, \"books_drop\" from books_drop union all select *, \"books_ptr\" from books_ptr;"
+    query1 = ""
 
-    cur.execute("select *, \"books_cmpl\" from books_cmpl union all select *, \"books_cr\" from books_cr union all select *, \"books_idle\" from books_idle union all select *, \"books_drop\" from books_drop union all select *, \"books_ptr\" from books_ptr;")
+    if url is not None:
+        query1 = f"select *, 'books_cmpl' from books_cmpl where url='{url}' union all select *, 'books_cr' from books_cr where url='{url}' union all select *, 'books_idle' from books_idle where url='{url}' union all select *, 'books_drop' from books_drop where url='{url}' union all select *, 'books_ptr' from books_ptr where url='{url}';"
+
+    cur.execute(query if url is None else query1)
     rows = cur.fetchall()
     for row in rows:
-            if update_info == True:
-                info = mangakatana.get_manga_info(row[0])
-            else: info = {}
-            book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": row[7]})
+        info = mangakatana.get_manga_info(row[0])
+        book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": row[7]})
 
     book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
 
@@ -151,7 +158,7 @@ def make_treedata(refresh=False):
                 # volumes read
                 v["vol"],
                 
-                str((datetime.now() - v["info"]["chapters"][-1]["date"]).days) + " days ago"  
+                str((datetime.now() - v["info"]["chapters"][-1]["date"]).days) + " days ago"
             ],
             # thumbnail
             outbuf.getvalue(),
@@ -177,7 +184,7 @@ def make_window():
         [
             TreeRtClick(
                 data=tds[0], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cr", row_height=30, num_rows=5, enable_events=False,
+                key="lib_tree_cr", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
@@ -188,7 +195,7 @@ def make_window():
         [
             TreeRtClick(
                 data=tds[1], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cmpl", row_height=30, num_rows=5, enable_events=False,
+                key="lib_tree_cmpl", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
@@ -199,7 +206,7 @@ def make_window():
         [
             TreeRtClick(
                 data=tds[2], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_idle", row_height=30, num_rows=5, enable_events=False,
+                key="lib_tree_idle", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
                 expand_x=True            
@@ -210,7 +217,7 @@ def make_window():
         [
             TreeRtClick(
                 data=tds[3], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_drop", row_height=30, num_rows=5, enable_events=False,
+                key="lib_tree_drop", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
                 expand_x=True
@@ -221,7 +228,7 @@ def make_window():
         [
             TreeRtClick(
                 data=tds[4], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_ptr", row_height=30, num_rows=5, enable_events=True,
+                key="lib_tree_ptr", row_height=30, num_rows=10, enable_events=True,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
                 expand_x=True
@@ -236,7 +243,7 @@ def make_window():
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
         ],
-        [sg.Text("Order by"), sg.Combo(["Title", "Score", "Chapters", "Volumes", "Latest upload"])],
+        #[sg.Text("Order by"), sg.Combo(["Title", "Score", "Chapters", "Volumes", "Latest upload"])],
         [
             sg.TabGroup([
                 [
@@ -263,8 +270,9 @@ def start_reading():
     w.close()
     return ans
 
-def edit_chapter_progress(url, update_before_opening=False):
-    if update_before_opening: update_book_info()
+def edit_chapter_progress(url):
+    update_book_info(url)
+    print("adasds")
     max_ch = len(book_info[url]["info"]["chapters"])
     layout = [
         [
@@ -278,7 +286,7 @@ def edit_chapter_progress(url, update_before_opening=False):
             sg.Column([
                 [sg.Button("-", key="lib_edit_minus"), sg.Input(int(book_info[url]["ch"]) + 1, key="lib_edit_progress_chapter", size=(len(str(max_ch)), 1)), sg.Text("/", pad=0), sg.Input(max_ch, disabled=True, background_color="white", size=(len(str(max_ch)), 1)), sg.Button("+", key="lib_edit_plus")],
                 [sg.Input(book_info[url]["vol"], key="lib_edit_progress_volume", size=(5, 1))],
-                [sg.Combo(["-"] + [x for x in range(1, 11)], book_info[url]["score"] if book_info[url]["score"] != "0" else "-", key="lib_edit_score", size=(3, 1))],
+                [sg.Combo(["-"] + [x for x in range(1, 11)], book_info[url]["score"] if book_info[url]["score"] != "0" else "-", key="lib_edit_score", size=(3, 1), readonly=True, background_color="white")],
                 [sg.Input("unknown", readonly=True, key="lib_edit_start_date", size=(11, 1), disabled_readonly_background_color="white"), sg.Button("Today", key="lib_edit_sd_today"), sg.Button("Pick", key="lib_edit_sd_pick")],
                 [sg.Input("unknown", readonly=True, key="lib_edit_end_date", size=(11, 1), disabled_readonly_background_color="white"), sg.Button("Today", key="lib_edit_ed_today"), sg.Button("Pick", key="lib_edit_ed_pick")]
             ])
@@ -368,7 +376,7 @@ def edit_chapter_progress(url, update_before_opening=False):
             
             break
 
-    update_book_info()
+    update_book_info(url)
     w.close()
     return True
 
