@@ -3,7 +3,6 @@ from io import BytesIO
 from PIL import Image
 from requests_html import HTMLSession
 from threading import Thread
-import imghdr
 
 import mangakatana
 import settings
@@ -30,15 +29,12 @@ class ThreadThatReturns(Thread):
         Thread.join(self, *args)
         return self._return
 
-class ReaderError(Exception): pass
-class ReaderImageDownloadError(ReaderError): pass
-class ReaderInfoError(ReaderError): pass
-
 class Reader:
     window: sg.Window = None # window object
     popup_window: sg.Window = None # popup window object (for showing the loading popup)
     updated: bool = False # does this book get updated in the library
     images: list[bytes] = [] # array of each page's image data
+    cache: list[bytes] = [] # next chapter's images
     book_info: dict = {} # info about book
     chapter_index: int = 0 # current chapter's index
     max_chapter_index: int = 0 # ...
@@ -58,8 +54,21 @@ class Reader:
         self.html_session = HTMLSession()
         self.html_session.browser
 
+    def cache_chapter(self, chapter_index: int) -> list[bytes]:
+        if chapter_index > self.max_chapter_index: return False
+
+        ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][chapter_index]["url"], self.html_session))
+        ttr.start()
+        image_urls = ttr.join()
+        if None in image_urls: return False
+        self.cache = mangakatana.download_images(image_urls)
+        if None in self.cache: return False
+        if int(settings.settings["reader"]["filter"]) > 0:
+            self.cache = bluefilter.bulk_bluefilter(self.cache, int(settings.settings["reader"]["filter"]))
+        return True
+
     # use perform_long_operation with this one or the UI will hang
-    def set_chapter(self, chapter_index : int = -1, loop = None):
+    def set_chapter(self, chapter_index : int = -1):
         if chapter_index != -1: self.chapter_index = chapter_index
         
         ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][self.chapter_index]["url"], self.html_session))
@@ -97,7 +106,7 @@ class Reader:
         layout = [
             [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
             [sg.Column([
-                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Text(), sg.Button("Cache next ch.", key="reader_cache")]
+                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Button("Cache next ch.", key="reader_cache", pad=0)]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
             [sg.HSeparator()],
             [
@@ -212,21 +221,30 @@ class Reader:
     def next_chapter(self) -> None:
         if self.chapter_index + 1 > self.max_chapter_index: return
         self.chapter_index += 1
-        self.popup_window = popup_loading()
-        self.popup_window.read(timeout=0)
-        self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
+        self.window["reader_go_next_ch"].update(disabled=True)
+        self.window["reader_go_prev_ch"].update(disabled=True)
+        if self.cache == []:
+            self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
+        else:
+            self.images = self.cache.copy()
+            self.cache.clear()
+            self.max_page_index = len(self.images) - 1
+            self.window.write_event_value("reader_loaded_chapter", "")
     
     def prev_chapter(self):
         if self.chapter_index - 1 < 0: return
         self.chapter_index -= 1
-        self.popup_window = popup_loading()
-        self.popup_window.read(timeout=0)
+        #self.popup_window = popup_loading()
+        #self.popup_window.read(timeout=0)
+        self.window["reader_go_next_ch"].update(disabled=True)
+        self.window["reader_go_prev_ch"].update(disabled=True)
         self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
 
     def set_zoom(self, d):
         if self.zoom_level + d <= 0: return
         self.zoom_level += d
         self.zoom()
+
 
     def jump(self):
         layout = [
@@ -237,7 +255,9 @@ class Reader:
         val = None
         while True:
             e, v = w.read()
-            if e == "cancel" or e == sg.WIN_CLOSED: break
+            if e == "cancel" or e == sg.WIN_CLOSED:
+                w.close()
+                return
             if e == "jump":
                 val = v["npage"]
                 try: val = int(val)
@@ -258,16 +278,21 @@ class Reader:
         if event == "reader_page_num": self.jump()
         if event == "reader_go_prev_ch": self.prev_chapter()
         if event == "reader_go_next_ch": self.next_chapter()
-        if event == "reader_scroll_right": self.set_hscroll(0.05)
-        if event == "reader_scroll_left": self.set_hscroll(-0.05)
-        if event == "reader_scroll_down": self.set_vscroll(0.05)
-        if event == "reader_scroll_up": self.set_vscroll(-0.05)
+        if event == "reader_scroll_right": self.set_hscroll(0.01)
+        if event == "reader_scroll_left": self.set_hscroll(-0.01)
+        if event == "reader_scroll_down": self.set_vscroll(0.01)
+        if event == "reader_scroll_up": self.set_vscroll(-0.01)
         if event == "reader_resized": self.resized()
         if event == "reader_loaded_chapter":
-            self.popup_window.close()
+            #self.window["reader_go_next_ch"].update(disabled=False)
+            #self.window["reader_go_prev_ch"].update(disabled=False)
+            self.window["reader_cache"].update(disabled=False)
             self.set_page(0)
             self.refresh()
         if event == "reader_zoom_in": self.set_zoom(0.25)
         if event == "reader_zoom_out": self.set_zoom(-0.25)
         if event == "reader_cache":
-            pass
+            if self.chapter_index + 1 <= self.max_chapter_index:
+                self.window.perform_long_operation(lambda: self.cache_chapter(self.chapter_index + 1), "reader_cached_next")
+        if event == "reader_cached_next":
+            self.window["reader_cache"].update(disabled=True)
