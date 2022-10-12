@@ -101,7 +101,7 @@ library.update_book_info()
 print("done")
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
-wind.bind("<FocusIn>", "main_focusin")
+#wind.bind("<FocusIn>", "main_focusin")
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
 
@@ -150,6 +150,8 @@ while True:
             menu[0][1][ix] = "{} - {}".format(readers[ix].book_info["title"],
                 readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"])
             wind["menu"].update(menu)
+            if readers[ix].book_info["url"] == reader.book_info["url"]:
+                wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
         
         if e == "reader_mini":
             readers[ix].window.hide()
@@ -232,13 +234,6 @@ while True:
         url = results[ix]["url"]
         set_status("Fetching book information...")
         
-        wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
-
-    if e == "main_focusin":
-        continue
-        try:
-            url = reader.book_info["url"]
-        except: continue
         wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
 
     if e == "book_list_got_info":
@@ -387,6 +382,7 @@ while True:
             del readers[-1]
             del menu[0][1][-1]
             wind["menu"].update(menu)
+            sg.popup_error("Failed to download chapter.")
             continue
         download_end_time = datetime.utcnow().timestamp()
         if wloading is not None: wloading.close()
@@ -421,7 +417,9 @@ while True:
         readers[-1].set_page(0)
     
     if e == "preview_edit_details":
-        library.edit_chapter_progress(reader.book_info["url"])
+        ret = library.edit_chapter_progress(reader.book_info["url"])
+        if ret:
+            wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
 
     if e == "Save screenshot":
         filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",

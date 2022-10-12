@@ -18,7 +18,9 @@ from requests_html import HTMLSession
 stop_search = False
 
 def get_manga_info(url: str) -> dict:
-    resp = r.get(url)
+    try:
+        resp = r.get(url)
+    except: return {}
     if resp.status_code != 200: return {}
     soup = BeautifulSoup(resp.text, "lxml")
     
@@ -101,7 +103,9 @@ def search(query: str, search_by: int = 0) -> list:
     template_url = "https://mangakatana.com/page/{}?search={}&search_by={}"
     page = 1
     url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
-    resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
+    try:
+        resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
+    except: return []
     if resp.status_code != 200: return []
     soup = BeautifulSoup(resp.text, "lxml")
 
@@ -132,8 +136,9 @@ def search(query: str, search_by: int = 0) -> list:
         if added != nresults: page += 1
         else: break
         url = template_url.format(page, query, "book_name" if search_by == 0 else "author")
-        
-        resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
+        try:
+            resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
+        except: return []
         if resp.status_code != 200: return None
         while len(resp.text) == 0:
             resp = r.get(url, headers={"User-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"})
@@ -198,8 +203,10 @@ def search_page(query: str, page: int = 1, search_by: int = 0) -> tuple:
 def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     links = []
     
-    resp = s.get(url)
-    resp.html.render(timeout=60)
+    try:
+        resp = s.get(url)
+        resp.html.render(timeout=60)
+    except: return []
     
     page_divs = resp.html.find("div[id^=\"page\"]")
     for page_div in page_divs:
@@ -214,6 +221,7 @@ def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     return links
 
 def download_images(urls: list) -> list:
+    if urls == []: return []
     sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
     async def fetch(url: str, i: int):
@@ -236,10 +244,3 @@ def download_images(urls: list) -> list:
     loop.run_until_complete(asyncio.wait(tasks))
     loop.close() #???
     return results
-
-import util
-
-def download_images2(urls):
-    results = [None] * len(urls)
-    for url in urls:
-        resp = r.get(url)

@@ -171,6 +171,9 @@ class Reader:
         self.window["reader_go_fwd"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
+        self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
+        if self.cache == []:
+            self.window["reader_cache"].update("cache next ch.")
         self.window["reader_page_img"].update(data=self.images[self.page_index])
         self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
         self.window.refresh()
@@ -234,8 +237,6 @@ class Reader:
     def prev_chapter(self):
         if self.chapter_index - 1 < 0: return
         self.chapter_index -= 1
-        #self.popup_window = popup_loading()
-        #self.popup_window.read(timeout=0)
         self.window["reader_go_next_ch"].update(disabled=True)
         self.window["reader_go_prev_ch"].update(disabled=True)
         self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
@@ -293,6 +294,8 @@ class Reader:
         if event == "reader_zoom_out": self.set_zoom(-0.25)
         if event == "reader_cache":
             if self.chapter_index + 1 <= self.max_chapter_index:
+                self.window["reader_cache"].update(disabled=True)
+                self.window["reader_cache"].update("caching...")
                 self.window.perform_long_operation(lambda: self.cache_chapter(self.chapter_index + 1), "reader_cached_next")
         if event == "reader_cached_next":
-            self.window["reader_cache"].update(disabled=True)
+            self.window["reader_cache"].update("cached.")
