@@ -1,3 +1,4 @@
+import base64
 from io import BytesIO
 from datetime import datetime
 import json
@@ -5,14 +6,12 @@ import PySimpleGUI as sg
 from PIL import Image, ImageTk
 import requests
 import textwrap
+import base64
 
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
-
-def myround(x, prec=2, base=.05):
-  return round(base * round(float(x) / base), prec)
-
+from util import DEFAULT_COVER
 
 tabtable = {
     "tab_reading": "lib_tree_cr",
@@ -21,7 +20,6 @@ tabtable = {
     "tab_dropped": "lib_tree_drop",
     "tab_ptr": "lib_tree_ptr"
 }
-    
 
 settings.read_settings()
 
@@ -150,9 +148,22 @@ while True:
             menu[0][1][ix] = "{} - {}".format(readers[ix].book_info["title"],
                 readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"])
             wind["menu"].update(menu)
+            wind["read_continue"].update(disabled=False)
+            wind["read_latest"].update(disabled=False)
+            wind["details"].update(disabled=False)
             if readers[ix].book_info["url"] == reader.book_info["url"]:
                 wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
         
+        if e == "reader_cache":
+            wind["read_continue"].update(disabled=True)
+            wind["read_latest"].update(disabled=True)
+            wind["details"].update(disabled=True)
+            
+        if e == "reader_cached_next":
+            wind["read_continue"].update(disabled=False)
+            wind["read_latest"].update(disabled=False)
+            wind["details"].update(disabled=False)
+
         if e == "reader_mini":
             readers[ix].window.hide()
         
@@ -167,10 +178,16 @@ while True:
         
         if e == "reader_go_prev_ch":
             download_start_time = datetime.utcnow().timestamp()
+            wind["read_continue"].update(disabled=True)
+            wind["read_latest"].update(disabled=True)
+            wind["details"].update(disabled=True)
             set_status("Downloading chapter...")
 
         if e == "reader_go_next_ch":
             download_start_time = datetime.utcnow().timestamp()
+            wind["read_continue"].update(disabled=True)
+            wind["read_latest"].update(disabled=True)
+            wind["details"].update(disabled=True)
             set_status("Downloading chapter...")
             
             print("updating...")
@@ -281,7 +298,7 @@ while True:
             if cover.status_code != 200: raise Exception
             im = Image.open(cover.raw)
         except:
-            im = Image.open("default_cover.png")
+            im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
         wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)))
@@ -326,9 +343,11 @@ while True:
         ix = len(reader.book_info["chapters"]) - ix - 1
 
         readers.append(Reader(reader.book_info))
+        """
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][ix]["name"]))
         wind["menu"].update(menu)
+        """
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
@@ -345,9 +364,11 @@ while True:
         ix = len(reader.book_info["chapters"]) - 1
 
         readers.append(Reader(reader.book_info))
+        """
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][ix]["name"]))
         wind["menu"].update(menu)
+        """
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
@@ -359,10 +380,13 @@ while True:
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
     
     if e == "read_continue":
+        
         readers.append(Reader(reader.book_info))
+        """
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][reader.chapter_index]["name"]))
         wind["menu"].update(menu)
+        """
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
@@ -379,11 +403,12 @@ while True:
         wind["details"].update(disabled=False)
         if v[e] == False:
             #wloading.close()
-            del readers[-1]
-            del menu[0][1][-1]
-            wind["menu"].update(menu)
             sg.popup_error("Failed to download chapter.")
             continue
+        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
+            readers[-1].book_info["chapters"][readers[-1].chapter_index]["name"]))
+        wind["menu"].update(menu)
+
         download_end_time = datetime.utcnow().timestamp()
         if wloading is not None: wloading.close()
         set_status(

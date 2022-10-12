@@ -3,11 +3,9 @@ mangakatana.com API
 Compliant with the website up until at least 2022-07-23
 """
 from datetime import datetime
-from io import BytesIO
 import requests as r
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
-from PIL import Image
 import asyncio, aiohttp
 import re
 

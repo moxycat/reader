@@ -8,26 +8,7 @@ import mangakatana
 import settings
 import bluefilter
 
-def popup_loading():
-    return sg.Window("", layout=[
-        [
-            sg.Text("Loading...", font=("Consolas", 14))
-        ]
-    ], modal=True, no_titlebar=True, finalize=True)
-
-class ThreadThatReturns(Thread):
-    def __init__(self, group=None, target=None, name=None, args=(), kwargs={}, Verbose=None):
-        Thread.__init__(self, group, target, name, args, kwargs)
-        self._return = None
-    
-    def run(self):
-        print(type(self._target))
-        if self._target is not None:
-            self._return = self._target(*self._args, **self._kwargs)
-    
-    def join(self, *args):
-        Thread.join(self, *args)
-        return self._return
+from util import ThreadThatReturns
 
 class Reader:
     window: sg.Window = None # window object

@@ -21,10 +21,10 @@ create table books (
 create table chapters (
     book_url text,
 
-    id int not null default 0,
+    chapter_index int,
     chapter_url text primary key,
     title text,
-    date text not null "unknown",
+    date text,
 
     foreign key (book_url) references books(url)
 );
@@ -32,6 +32,6 @@ create table chapters (
 create table pages (
     chapter_url text,
     page_index int,
-    data text,
-    foreign key (chapter_url) references chapters(chapter_url)
+    data blob,
+    foreign key (chapter_url) references chapters(chapter_url) on delete cascade
 );

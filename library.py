@@ -5,14 +5,15 @@ from io import BytesIO
 from PIL import Image
 from datetime import datetime
 import re
+import base64
 
 import mangakatana, settings
+from util import TreeRtClick, DEFAULT_COVER
 
-conn = None
-cur = None
+conn: sql.Connection = None
+cur: sql.Cursor = None
 book_info = {}
 thumbnails = []
-td_rows = []
 
 tables = ["books_cr", "books_cmpl", "books_idle", "books_drop", "books_ptr"]
 
@@ -22,20 +23,6 @@ class BookStatus():
     ON_HOLD = 2
     DROPPED = 3
     PLAN_TO_READ = 4
-
-# modded Tree class where right clicking on an element selects it before opening the right click menu
-class TreeRtClick(sg.Tree):
-    def _RightClickMenuCallback(self, event):
-        tree = self.Widget
-        item = tree.identify_row(event.y)
-        tree.selection_set(item)
-        super()._RightClickMenuCallback(event)
-        t = sg.Tree()
-    
-    def delete_selected(self):
-        sel = self.Widget.selection()
-        for item in sel:
-            self.Widget.delete(item)
 
 def init_db():
     global conn, cur
@@ -136,7 +123,7 @@ def make_treedata(refresh=False):
             buf = BytesIO(thumbnails[i])
             im = Image.open(buf)
         else:
-            im = Image.open("default_cover.png")
+            im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         outbuf = BytesIO()
         
         im.thumbnail((30, 30), resample=Image.BICUBIC)
@@ -404,8 +391,7 @@ def search(query, tr: TreeRtClick):
     removed.clear()
     for id, url in tr.IdToKey.items():
         if url == "": continue
-        #if query not in book_info[url]["info"]["title"].lower():
-        if re.match(query, book_info[url]["info"]["title"].lower()) is None:
+        if re.match(query, book_info[url]["info"]["title"], re.IGNORECASE) is None:
             ix = tr.Widget.index(id)
             removed.append((ix, id))
     print(removed)
