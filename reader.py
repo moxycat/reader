@@ -26,11 +26,24 @@ class Reader:
     zoom_lock: bool = False
 
     def set_book_info(self, book_info: dict):
-        self.book_info = book_info
+        self.book_info = book_info.copy()
         self.max_chapter_index = len(self.book_info["chapters"]) - 1
 
     def __init__(self, book_info: dict = {}):
         if book_info != {}: self.set_book_info(book_info)
+        else:
+            self.book_info = {
+            "url": "",
+            "cover_url": "",
+            "title": "",
+            "alt_names": [],
+            "author": "",
+            "genres": [],
+            "status": "",
+            "description": "",
+            "chapters": []
+            }
+            self.max_chapter_index = 0
         self.html_session = HTMLSession()
         self.html_session.browser
 

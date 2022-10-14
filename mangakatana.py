@@ -40,17 +40,18 @@ def get_manga_info(url: str) -> dict:
 
     chapters = []
     srvr = ("" if settings.settings["server"]["source"] == "1" else "?sv=mk" if settings.settings["server"]["source"] == "2" else "?sv=3" if settings.settings["server"]["source"] == "3" else "")
-    for tr in soup.find("div", {"class": "chapters"}).find("table").find("tbody").find_all("tr"):
+    chaptersoup = soup.find("div", {"class": "chapters"}).find("table").find("tbody").find_all("tr")
+    for i, tr in enumerate(reversed(chaptersoup)):
         a = tr.find("div", {"class": "chapter"}).find("a")
         chapters.append(
             {
+                "index": i,
                 "name": a.text.strip(),
                 "url": a.get("href") + srvr,
                 "date": datetime.strptime(tr.find("div", {"class": "update_time"}).text.strip(), "%b-%d-%Y")
             }
         )
-    
-    chapters.reverse()
+
     return {
         "url": link,
         "cover_url": cover_url,
@@ -254,6 +255,7 @@ def fetch(url: str) -> bytes | None:
         return None
 
 def download_images(urls: list[str]):
+    if urls == []: return [None]
     with concurrent.futures.ThreadPoolExecutor() as pool:
         results = pool.map(fetch, urls)
     return list(results)

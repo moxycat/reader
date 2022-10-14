@@ -8,4 +8,4 @@ def make_window():
             ], key="details_chapters_col", justification="c", vertical_alignment="c")
         ],
     ]
-    return sg.Window("", layout, element_justification="l", finalize=True, modal=True, disable_minimize=True)
+    return sg.Window("", layout, element_justification="c", finalize=True, modal=True, disable_minimize=True)
