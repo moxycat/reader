@@ -2,7 +2,6 @@ import PySimpleGUI as sg
 from io import BytesIO
 from PIL import Image
 from requests_html import HTMLSession
-from threading import Thread
 
 import mangakatana
 import settings

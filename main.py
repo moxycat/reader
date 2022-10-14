@@ -404,6 +404,7 @@ while True:
         if v[e] == False:
             #wloading.close()
             sg.popup_error("Failed to download chapter.")
+            wind["search_statusbar"].update("Failed to download chapter.")
             continue
         menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
             readers[-1].book_info["chapters"][readers[-1].chapter_index]["name"]))

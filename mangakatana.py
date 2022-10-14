@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 import asyncio, aiohttp
 import re
+import concurrent.futures
 
 import settings, util
 
@@ -218,7 +219,7 @@ def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
         print(link)
     return links
 
-def download_images(urls: list) -> list:
+def download_images2(urls: list) -> list:
     if urls == []: return []
     sem = asyncio.BoundedSemaphore(20)
     results = [None] * len(urls)
@@ -242,3 +243,17 @@ def download_images(urls: list) -> list:
     loop.run_until_complete(asyncio.wait(tasks))
     loop.close() #???
     return results
+
+def fetch(url: str) -> bytes | None:
+    try:
+        resp = r.get(url)
+        img = util.pngify(resp.content)
+        print(len(resp.content))
+        return img
+    except:
+        return None
+
+def download_images(urls: list[str]):
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        results = pool.map(fetch, urls)
+    return list(results)
