@@ -7,6 +7,7 @@ from PIL import Image, ImageTk
 import requests
 import textwrap
 import base64
+import time
 
 import mangakatana
 import chapter_view, library, settings
@@ -95,7 +96,7 @@ layout = [
 print("init db")
 library.init_db()
 print("updating book info")
-library.update_book_info()
+library.refresh_book_info(settings.settings["storage"]["refresh"])
 print("done")
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
@@ -119,13 +120,14 @@ searcher_thread = None
 
 
 cats = ["Reading", "Completed", "On-hold", "Dropped", "Plan to read"]
+list2cat = {"books_cr": "Reading", "books_cmpl": "Completed", "books_idle": "On-hold", "books_drop": "Dropped", "books_ptr": "Plan to read"}
 
 results = [(library.book_info[k]["info"], library.book_info[k]["last_update"]) for k in library.book_info.keys()]
 names = [(textwrap.shorten(library.book_info[k]["info"]["title"], width=50, placeholder="..."), library.book_info[k]["last_update"]) for k in library.book_info.keys()]
 names = sorted(names,
-    key=lambda x: datetime.strptime(x[1], "%b-%d-%Y %H:%M:%S") if x[1] != "unknown" else datetime.fromtimestamp(0), reverse=True)
+    key=lambda x: x[1], reverse=True)
 results = sorted(results,
-    key=lambda x: datetime.strptime(x[1], "%b-%d-%Y %H:%M:%S") if x[1] != "unknown" else datetime.fromtimestamp(0), reverse=True)
+    key=lambda x: x[1], reverse=True)
 names = [item[0] for item in names]
 results = [item[0] for item in results]
 wind["book_list"].update(names)
@@ -192,9 +194,10 @@ while True:
             
             print("updating...")
             if readers[ix].updated:
-                library.update(readers[ix].book_info["url"], ch=readers[ix].chapter_index)
-                if readers[ix].book_info["url"] == reader.book_info["url"]:
-                    wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
+                if readers[ix].chapter_index > library.book_info[readers[ix].book_info["url"]]["ch"]:
+                    library.update_userdata(readers[ix].book_info["url"], ch=readers[ix].chapter_index)
+                    if readers[ix].book_info["url"] == reader.book_info["url"]:
+                        wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
             print("done")
     
     menu_clean = [a.replace("&", "") for a in menu[0][1]]
@@ -257,7 +260,9 @@ while True:
         set_status("Fetched book information!")
         try:
             reader.set_book_info(v[e])
-        except: continue
+        except:
+            print("bruh")
+            continue
 
         wind["preview_author"].update("Author:         " + reader.book_info["author"])
         genres = ""
@@ -273,12 +278,12 @@ while True:
         wind["preview_desc"].update("\n".join(textwrap.wrap(reader.book_info["description"], width=50)), visible=True)
         wind["preview_list"].update(visible=True)
 
-        is_in_library, rows, which_list = library.is_in_lib(reader.book_info["url"])
+        is_in_library, rows = library.get_book(reader.book_info["url"])
         if is_in_library:
-            wind["add_to_list"].update(visible=False)
+            wind["add_to_list"].update(visible=False, disabled=False)
             wind["preview_edit_details"].update(visible=True)
-            wind["preview_book_list"].update(visible=True, value=cats[which_list])
-            ix = int(rows[1])
+            wind["preview_book_list"].update(visible=True, value=list2cat[rows[1]])
+            ix = int(rows[9])
             wind["read_continue"].update(
                 text="[{}]".format(textwrap.shorten(reader.book_info["chapters"][ix]["name"], width=20, placeholder="...")),
                 visible=True)
@@ -301,20 +306,17 @@ while True:
             im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
-        wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)))
+        wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)), visible=True)
         wind["preview_title"].set_tooltip("\n".join(reader.book_info["alt_names"]))
 
     if e == "preview_book_list":
         dest = cats.index(v["preview_book_list"])
-        src = which_list
-        library.move(reader.book_info["url"], src=src, dest=dest)
-        which_list = dest
+        library.move(reader.book_info["url"], dest=dest)
     
     if e == "add_to_list":
-        library.add(reader.book_info["url"], 0, 0, "unknown", "unknown", "0")
-        wind["add_to_list"].update(visible=False)
-        wind["preview_book_list"].update(visible=True, value="Plan to read")
-        which_list = library.BookStatus.PLAN_TO_READ
+        wind["add_to_list"].update(disabled=True)
+        library.add(reader.book_info["url"], 0, 0, -1, -1, 0)
+        wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
 
     if e == "details":
         wdetails = chapter_view.make_window()
@@ -324,85 +326,73 @@ while True:
         dates = [datetime.strftime(a["date"], "%b-%d-%Y") for a in reader.book_info["chapters"][::-1]]
         longestname = max([len(a) for a in chapters])
         chapter_and_date = ["{}{}{}".format(a[0], " " * (longestname - len(a[0]) + 5), a[1]) for a in zip(chapters, dates)]
-        wdetails["details_chapters"].Widget.configure(width = max([len(a) for a in chapter_and_date]))
+        wdetails["details_chapters"].Widget.configure(width=max([len(a) for a in chapter_and_date]))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
         if is_in_library:
+            downloaded_chapters = library.get_downloaded_chapters()
+            for i, ch in enumerate(reader.book_info["chapters"][::-1]):
+                if ch["url"] in downloaded_chapters:
+                    wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
+
             l = len(reader.book_info["chapters"])
             ix = l - reader.chapter_index - 1
             wdetails["details_chapters"].Widget.itemconfigure(ix, bg="yellow")
             pos = 1.0 - ((reader.chapter_index + 1) / len(reader.book_info["chapters"]))
             print(pos)
             wdetails["details_chapters"].set_vscroll_position(pos)
+
+            #wdetails["details_chapters"].update(right_click_menu=["", ["Mark as read", "Download"]])
     
     if w == wdetails and e == sg.WIN_CLOSED:
         wdetails.close()
         wdetails = None
     
-    if e == "details_chapters_open_book":
-        ix = wdetails["details_chapters"].get_indexes()[0]
-        ix = len(reader.book_info["chapters"]) - ix - 1
-
-        readers.append(Reader(reader.book_info))
-        """
-        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
-            readers[-1].book_info["chapters"][ix]["name"]))
-        wind["menu"].update(menu)
-        """
-
-        set_status("Downloading chapter...")
-        download_start_time = datetime.utcnow().timestamp()
-        #wloading = popup_loading()
-        #wloading.read(timeout=0)
-        wind["read_continue"].update(disabled=True)
-        wind["read_latest"].update(disabled=True)
-        wind["details"].update(disabled=True)
-        #print(readers[-1].book_info["chapters"][readers[-1].chapter_index]["url"])
-        wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
-        wdetails.close()
-
-    if e == "read_latest":
-        ix = len(reader.book_info["chapters"]) - 1
-
-        readers.append(Reader(reader.book_info))
-        """
-        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
-            readers[-1].book_info["chapters"][ix]["name"]))
-        wind["menu"].update(menu)
-        """
-
-        set_status("Downloading chapter...")
-        download_start_time = datetime.utcnow().timestamp()
-        #wloading = popup_loading()
-        #wloading.read(timeout=0)
-        wind["read_continue"].update(disabled=True)
-        wind["read_latest"].update(disabled=True)
-        wind["details"].update(disabled=True)
-        wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
+    if w == wdetails and e == "Mark as read":
+        ix = len(reader.book_info["chapters"]) - wdetails["details_chapters"].get_indexes()[0] - 1
+        ix1 = wdetails["details_chapters"].get_indexes()[0]
+        downloaded_chapters = library.get_downloaded_chapters()
+        for i, ch in enumerate(reader.book_info["chapters"][::-1]):
+            if ch["url"] in downloaded_chapters:
+                wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
+            else:
+                wdetails["details_chapters"].Widget.itemconfigure(i, bg="white")
+        wdetails["details_chapters"].Widget.itemconfigure(ix1, bg="yellow")
+        library.update_userdata(reader.book_info["url"], ch=ix)
+        wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
     
-    if e == "read_continue":
-        
+    if w == wdetails and e == "Download":
+        ixs = wdetails["details_chapters"].get_indexes()
+        #ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs_original]
+        #chapters = (reader.book_info["chapters"][ix]["url"] for ix in ixs)
+        for ix in ixs:
+            if not library.set_pages(reader.book_info["chapters"][len(reader.book_info["chapters"]) - ix - 1]["url"], reader.html_session):
+                sg.popup("Failed to download [{}]".format(reader.book_info["chapters"][ix]["url"]), title="Download error")
+            else:
+                wdetails["details_chapters"].Widget.itemconfigure(ix, bg="green")
+
+    if e in ["read_latest", "read_continue", "details_chapters_open_book"]:
+        if e == "read_continue": ix = reader.chapter_index
+        elif e == "read_latest": ix = len(reader.book_info["chapters"]) - 1
+        elif e == "details_chapters_open_book":
+            ix = wdetails["details_chapters"].get_indexes()[0]
+            ix = len(reader.book_info["chapters"]) - ix - 1
+            wdetails.close()
+            wdetails = None
+
         readers.append(Reader(reader.book_info))
-        """
-        menu[0][1].append("{} - {}".format(readers[-1].book_info["title"],
-            readers[-1].book_info["chapters"][reader.chapter_index]["name"]))
-        wind["menu"].update(menu)
-        """
 
         set_status("Downloading chapter...")
         download_start_time = datetime.utcnow().timestamp()
-        #wloading = popup_loading()
-        #wloading.read(timeout=0)
         wind["read_continue"].update(disabled=True)
         wind["read_latest"].update(disabled=True)
         wind["details"].update(disabled=True)
-        wind.perform_long_operation(lambda: readers[-1].set_chapter(reader.chapter_index), "open_reader")
-    
+        wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
+
     if e == "open_reader":
         wind["read_continue"].update(disabled=False)
         wind["read_latest"].update(disabled=False)
         wind["details"].update(disabled=False)
         if v[e] == False:
-            #wloading.close()
             sg.popup_error("Failed to download chapter.")
             wind["search_statusbar"].update("Failed to download chapter.")
             continue
@@ -416,11 +406,10 @@ while True:
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(readers[-1].images)} pages ({round(float(len(readers[-1].images))/(download_end_time - download_start_time), 2)} page/s)")
         if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
-            library.update(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
+            library.update_userdata(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
             if wreadlist is not None:
                 print("updating entry...")
                 url = readers[-1].book_info["url"]
-                #print("DASDJASJDKASDJASKDJKAS: ", [x[1] for x in tabtable.items()][which_list])
                 wreadlist[[x[1] for x in tabtable.items()][which_list]].update(key=url, value=[
                     textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
                     library.book_info[url]["score"],
@@ -433,14 +422,16 @@ while True:
                 ])
                 wreadlist.refresh()
         elif is_in_library:
-            library.update(readers[-1].book_info["url"])
+            library.update_userdata(readers[-1].book_info["url"])
         elif not is_in_library:
             readers[-1].updated = library.start_reading()
             if readers[-1].updated:
-                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, datetime.today().strftime("%Y-%m-%d"), "unknown", "0", where=library.BookStatus.READING)
+                library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, int(time.time()), -1, 0, where=library.BookList.READING)
                 # update lib interface if open
         readers[-1].make_window()
         readers[-1].set_page(0)
+        if reader.book_info["url"] == readers[-1].book_info["url"]:
+            wind.perform_long_operation(lambda: mangakatana.get_manga_info(readers[-1].book_info["url"]), "book_list_got_info")
     
     if e == "preview_edit_details":
         ret = library.edit_chapter_progress(reader.book_info["url"])
@@ -538,7 +529,15 @@ while True:
         library.delete(url)
         wreadlist[tabtable[tab]].delete_selected()
         wreadlist.refresh()
-        print(url, reader.book_info["url"])
+        tds = library.make_treedata()
+        library.update_info(url)
+        wreadlist["lib_tree_cr"].update(tds[0])
+        wreadlist["lib_tree_cmpl"].update(tds[1])
+        wreadlist["lib_tree_idle"].update(tds[2])
+        wreadlist["lib_tree_drop"].update(tds[3])
+        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.refresh()
+        #print(url, reader.book_info["url"])
         if url == reader.book_info["url"]:
             wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
     
@@ -562,13 +561,13 @@ while True:
         print(tab)
         try:
             url = v[tabtable[tab]][0]
-            library.move(url, src=list(tabtable.keys()).index(tab), dest=cats.index(e))
+            library.move(url, dest=cats.index(e))
             print(url, reader.book_info["url"])
             if url == reader.book_info["url"]:
                 wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")
             wloading = popup_loading()
             wloading.read(timeout=0)
-            wind.perform_long_operation(lambda: library.make_treedata(True), "library_moved")
+            wind.perform_long_operation(lambda: library.make_treedata(), "library_moved")
         except: continue
     
     if e == "library_moved":
@@ -598,9 +597,9 @@ while True:
         try:
             reader.set_book_info(v[e])
         except: continue
-        is_in_library, rows, which_list = library.is_in_lib(reader.book_info["url"])
+        is_in_library, rows = library.get_book(reader.book_info["url"])
         if is_in_library:
-            ix = int(rows[1])
+            ix = int(rows[9])
             reader.chapter_index = ix
             reader.page_index = 0
             wind.write_event_value("read_continue", "")
@@ -630,7 +629,8 @@ while True:
                 "source": v["settings_server_source"]
             },
             "storage": {
-                "path": v["settings_storage_db_path"]
+                "path": v["settings_storage_db_path"],
+                "refresh": v["settings_storage_refresh"]
             }
         }
         with open("settings.json", "w") as f:

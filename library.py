@@ -6,6 +6,8 @@ from PIL import Image
 from datetime import datetime
 import re
 import base64
+import time
+import json
 
 import mangakatana, settings
 from util import TreeRtClick, DEFAULT_COVER
@@ -17,7 +19,7 @@ thumbnails = []
 
 tables = ["books_cr", "books_cmpl", "books_idle", "books_drop", "books_ptr"]
 
-class BookStatus():
+class BookList():
     READING = 0
     COMPLETED = 1
     ON_HOLD = 2
@@ -30,102 +32,145 @@ def init_db():
     cur = conn.cursor()
     return (conn, cur)
 
-def add(url, ch=0, vol=0, sd="unknown", ed="unknown", score="0", /, where=BookStatus.PLAN_TO_READ, last_update=None):
-    if last_update is None:
-        last_update = datetime.strftime(datetime.now(), "%b-%d-%Y %H:%M:%S")
-    query = "INSERT INTO {} VALUES(?, ?, ?, ?, ?, ?, ?);".format(tables[where])
-    print(query)
-    cur.execute(query, (url, ch, vol, sd, ed, score, last_update))
+def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
+    if last_update is None: last_update = int(time.time())
+    query = "INSERT INTO books (url, list, chapter, volume, score, start_date, end_date, last_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    cur.execute(query, (url, tables[where], ch, vol, score, sd, ed, last_update))
     conn.commit()
+    update_info(url)
+    refresh_book_info()
 
-def update(url, ch=None, vol=None, sd=None, ed=None, score=None, last_update=None):
-    if last_update is None:
-        last_update = datetime.strftime(datetime.now(), "%b-%d-%Y %H:%M:%S")
-    _, _, ix = is_in_lib(url)
-    table = tables[ix]
-    query = "UPDATE {} SET ".format(table)
+# fetch fresh information about a book
+def update_info(url: str):
+    info = mangakatana.get_manga_info(url)
+    cover = mangakatana.fetch(info["cover_url"])
+    cover = base64.b64encode(cover)
+    query = "UPDATE books SET title=?, alt_names=?, author=?, genres=?, status=?, description=?, cover=? WHERE url=?"    
+    cur.execute(query, (info["title"], json.dumps(info["alt_names"]), info["author"], json.dumps(info["genres"]), info["status"], info["description"], cover, url))
+    
+    # update chapters
+    for chapter in info["chapters"]:
+        cur.execute("INSERT OR REPLACE INTO chapters VALUES (?, ?, ?, ?, ?)", (url, chapter["index"], chapter["url"], chapter["name"], time.mktime(chapter["date"].timetuple())))
+    
+    conn.commit()
+    refresh_book_info()
+    return (info, cover)
+
+# update user's data about a book
+def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_update=None):
+    if last_update is None: last_update = int(time.time())
     args = [(ch, "chapter"), (vol, "volume"), (sd, "start_date"), (ed, "end_date"), (score, "score"), (last_update, "last_update")]
+    vals = []
     for arg in args:
-        if arg[0] is not None: query += arg[1] + "=?,"
-    if query[-1] == ",": query = query.removesuffix(",")
-    query += " WHERE url = \"{}\";".format(url)
-    print(query)
+        if arg[0] is not None: vals.append(arg[1] + "=?")
+    query = "UPDATE books SET " + ",".join(vals) + f" WHERE url='{url}'"
     tup = tuple(filter(lambda x: x is not None, [x[0] for x in args]))
+    print(query, tup)
     cur.execute(query, tup)
     conn.commit()
+    refresh_book_info()
 
-def delete(url, /, where=None):
-    if where is None:
-        _, _, ix = is_in_lib(url)
-    else: ix = where
-    query = "DELETE FROM {} WHERE url = ?".format(tables[ix])
-    print(query)
-    cur.execute(query, (url, ))
-    conn.commit()
-
-def move(url, /, src, dest):
-    if src == dest: return
-    query = "SELECT * FROM {} WHERE url = ?".format(tables[src])
-    print(query)
-    cur.execute(query, (url,))
-    rows = cur.fetchall()
-    print(rows)
-    if len(rows) > 1: return
-    row = rows[0]
-    add(row[0], row[1], row[2], row[3], row[4], row[5], where=dest)
-    delete(row[0], where=src)
-
-def is_in_lib(url):
-    query = "SELECT * FROM {} WHERE url=?"
-    for i, _ in enumerate(tables):
-        cur.execute(query.format(tables[i]), (url,))
-        rows = cur.fetchall()
-        if len(rows) > 0: return (True, rows[0], i)
-    return (False, None, None)
-
-def update_book_info(url=None):
-    global book_info
-    book_info.clear()
-    
-    query = "select *, \"books_cmpl\" from books_cmpl union all select *, \"books_cr\" from books_cr union all select *, \"books_idle\" from books_idle union all select *, \"books_drop\" from books_drop union all select *, \"books_ptr\" from books_ptr;"
-    query1 = ""
-
-    if url is not None:
-        query1 = f"select *, 'books_cmpl' from books_cmpl where url='{url}' union all select *, 'books_cr' from books_cr where url='{url}' union all select *, 'books_idle' from books_idle where url='{url}' union all select *, 'books_drop' from books_drop where url='{url}' union all select *, 'books_ptr' from books_ptr where url='{url}';"
-
-    cur.execute(query if url is None else query1)
+def delete(url: str):
+    cur.execute("DELETE FROM books WHERE url=?", (url,))
+    cur.execute("SELECT * FROM chapters WHERE book_url=?", (url,))
     rows = cur.fetchall()
     for row in rows:
-        info = mangakatana.get_manga_info(row[0])
-        book_info.setdefault(row[0], {"ch": row[1], "vol": row[2], "start_date": row[3], "end_date": row[4], "score": row[5], "info": info, "last_update": row[6], "list": row[7]})
+        chapter_url = row[2]
+        cur.execute("DELETE FROM pages WHERE chapter_url=?", (chapter_url,))
 
+    cur.execute("DELETE FROM chapters WHERE book_url=?", (url,))
+    conn.commit()
+    refresh_book_info()
+
+def move(url: str, /, dest: BookList):
+    cur.execute("UPDATE books SET list=? WHERE url=?", (tables[dest], url))
+    conn.commit()
+    refresh_book_info()
+
+def get_book(url: str) -> tuple[bool, None | list]:
+    query = "SELECT * FROM books WHERE url=?"
+    cur.execute(query, (url,))
+    rows = cur.fetchall()
+    if len(rows) > 1 or len(rows) == 0: return (False, None)
+    return (True, rows[0])
+
+def set_pages(chapter_url: str, session):
+    image_urls = mangakatana.get_manga_chapter_images(chapter_url, session)
+    images = mangakatana.download_images(image_urls)
+
+    for image in images:
+        im = Image.open(BytesIO(image))
+        try:
+            im.verify()
+            im.close()
+        except:
+            im.close()
+            return False
+
+    for i, image in enumerate(images):
+        cur.execute("INSERT INTO pages VALUES (?, ?, ?)", (chapter_url, i, image))
+    conn.commit()
+    return chapter_url
+
+def get_pages(chapter_url: str) -> list[bytes]:
+    query = "SELECT * FROM pages WHERE chapter_url=? ORDER BY page_index ASC"
+    cur.execute(query, (chapter_url,))
+    rows = cur.fetchall()
+    images: list[bytes] = []
+    for row in rows:
+        images.append(row[2])
+    return images
+
+def get_downloaded_chapters():
+    query = "SELECT DISTINCT chapter_url FROM pages"
+    cur.execute(query)
+    rows = cur.fetchall()
+    return [row[0] for row in rows]
+
+# full refresh means all book info will be fetched from server first otherwise it'll just be read as-is from the database
+def refresh_book_info(full=False):
+    global book_info
+    book_info.clear()
+    query = "SELECT * FROM books"
+    cur.execute(query)
+    rows = cur.fetchall()
+    if full:
+        for row in rows:
+            update_info(row[0])
+        refresh_book_info(False)
+        return
+    for row in rows:
+        url = row[0]
+        # get chapters
+        cur.execute("SELECT * FROM chapters WHERE book_url=? ORDER BY chapter_index ASC", (url,))
+        chapter_rows = cur.fetchall()
+        chapters = []
+        for i, chapter_row in enumerate(chapter_rows):
+            chapters.append({"index": i, "name": chapter_row[3], "url": chapter_row[2], "date": datetime.utcfromtimestamp(chapter_row[4])})
+        #chapters.reverse()
+        info = {
+            "url": url,
+            "title": row[2],
+            "alt_names": row[3],
+            "cover": row[4],
+            "author": row[5],
+            "genres": row[6],
+            "status": row[7],
+            "description": row[8],
+            "chapters": chapters
+        }
+        book_info.setdefault(url, {"ch": row[9], "vol": row[10], "score": row[11], "start_date": row[12], "end_date": row[13], "last_update": row[14], "info": info, "list": row[1]})
+    
     book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
 
-def download_thumbnails():
+def make_treedata():
     global thumbnails
-    thumbnail_urls = [book_info[k]["info"]["cover_url"] for k in book_info.keys()]
-    try:
-        thumbnails = mangakatana.download_images(thumbnail_urls)
-        return True
-    except:
-        thumbnails = [None] * len(thumbnail_urls)
-        return False
-
-def make_treedata(refresh=False):
-    global thumbnails
-    update_book_info()
+    refresh_book_info()
     tds = [sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData()]
 
-    if not refresh: download_thumbnails()
-
     for i, (k, v) in enumerate(book_info.items()):
-        if thumbnails[i] is not None:
-            buf = BytesIO(thumbnails[i])
-            im = Image.open(buf)
-        else:
-            im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         outbuf = BytesIO()
-        
+        im = Image.open(BytesIO(base64.b64decode(v["info"]["cover"])))
         im.thumbnail((30, 30), resample=Image.BICUBIC)
         im.save(outbuf, "png")
         ix = tables.index(v["list"])
@@ -150,22 +195,12 @@ def make_treedata(refresh=False):
             # thumbnail
             outbuf.getvalue(),
             )
-        #if v["start_date"] != "unknown":
-        #    dssr = (datetime.now() - datetime.strptime(v["start_date"], "%Y-%m-%d")).days
-        #else: dssr = "unknown"
-        #tds[ix].insert(k, k + "_more", "", [
-        #    "Days since started reading: {}\nLast updated: {}\n".format(dssr, v["last_update"])
-        #])
-    
     return tds
 
 def make_window():
     global thumbnails
-    #update_book_info()
-    
     tds = make_treedata()
-
-    title_max_len = 50
+    title_max_len = 65
 
     tab_cr_layout = [
         [
@@ -225,7 +260,7 @@ def make_window():
 
     layout = [
         [
-            sg.Menu([["Window", ["Refresh", "Close"]]], key="lib_menu")
+            sg.Menu([["Library", ["Refresh local database", "Sort by", ["Title", "Score", "Chapters", "Volumes", "Latest upload", "Last update"]]]], key="lib_menu")
         ],
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
@@ -258,8 +293,8 @@ def start_reading():
     return ans
 
 def edit_chapter_progress(url):
-    update_book_info(url)
-    print("adasds")
+    update_info(url)
+    refresh_book_info()
     max_ch = len(book_info[url]["info"]["chapters"])
     layout = [
         [
@@ -282,10 +317,10 @@ def edit_chapter_progress(url):
     ]
     w = sg.Window("Edit", layout, finalize=True, modal=True, disable_minimize=True, element_justification="l")
     print(book_info[url]["start_date"])
-    if book_info[url]["start_date"] != "unknown":
-        w["lib_edit_start_date"].update(datetime.strftime(datetime.strptime(book_info[url]["start_date"], "%Y-%m-%d"), "%b-%d-%Y"))
-    if book_info[url]["end_date"] != "unknown":
-        w["lib_edit_end_date"].update(datetime.strftime(datetime.strptime(book_info[url]["end_date"], "%Y-%m-%d"), "%b-%d-%Y"))
+    if book_info[url]["start_date"] != -1:
+        w["lib_edit_start_date"].update(datetime.strftime(datetime.fromtimestamp(book_info[url]["start_date"]), "%b-%d-%Y"))
+    if book_info[url]["end_date"] != -1:
+        w["lib_edit_end_date"].update(datetime.strftime(datetime.fromtimestamp(book_info[url]["end_date"]), "%b-%d-%Y"))
 
     while True:
         e, v = w.read()
@@ -341,7 +376,7 @@ def edit_chapter_progress(url):
                 w["lib_edit_progress_chapter"].update(book_info[url]["ch"])
                 continue
             if ch > 0 and ch <= int(max_ch):
-                update(url, ch=ch - 1)
+                update_userdata(url, ch=ch - 1)
             
             vol = v["lib_edit_progress_volume"]
             try:
@@ -350,20 +385,19 @@ def edit_chapter_progress(url):
             except:
                 w["lib_edit_progress_volume"].update(book_info[url]["vol"])
                 continue
-            if vol >= 0: update(url, vol=vol)
+            if vol >= 0: update_userdata(url, vol=vol)
 
             score = v["lib_edit_score"]
-            if score == "-": update(url, score=0)
-            else: update(url, score=int(score))
+            if score == "-": update_userdata(url, score=0)
+            else: update_userdata(url, score=int(score))
 
             if v["lib_edit_start_date"] != "unknown":
-                update(url, sd=datetime.strftime(datetime.strptime(v["lib_edit_start_date"], "%b-%d-%Y"), "%Y-%m-%d"))
+                update_userdata(url, sd=int(time.mktime(datetime.strptime(v["lib_edit_start_date"], "%b-%d-%Y").timetuple())))
             if v["lib_edit_end_date"] != "unknown":
-                update(url, ed=datetime.strftime(datetime.strptime(v["lib_edit_end_date"], "%b-%d-%Y"), "%Y-%m-%d"))            
-            
+                update_userdata(url, ed=int(time.mktime(datetime.strptime(v["lib_edit_end_date"], "%b-%d-%Y").timetuple())))
             break
 
-    update_book_info(url)
+    refresh_book_info()
     w.close()
     return True
 

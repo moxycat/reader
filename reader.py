@@ -6,6 +6,7 @@ from requests_html import HTMLSession
 import mangakatana
 import settings
 import bluefilter
+import library
 
 from util import ThreadThatReturns
 
@@ -26,11 +27,24 @@ class Reader:
     zoom_lock: bool = False
 
     def set_book_info(self, book_info: dict):
-        self.book_info = book_info
+        self.book_info = book_info.copy()
         self.max_chapter_index = len(self.book_info["chapters"]) - 1
 
     def __init__(self, book_info: dict = {}):
         if book_info != {}: self.set_book_info(book_info)
+        else:
+            self.book_info = {
+            "url": "",
+            "cover_url": "",
+            "title": "",
+            "alt_names": [],
+            "author": "",
+            "genres": [],
+            "status": "",
+            "description": "",
+            "chapters": []
+            }
+            self.max_chapter_index = 0
         self.html_session = HTMLSession()
         self.html_session.browser
 
@@ -48,9 +62,15 @@ class Reader:
         return True
 
     # use perform_long_operation with this one or the UI will hang
-    def set_chapter(self, chapter_index : int = -1):
+    def set_chapter(self, chapter_index: int =-1):
         if chapter_index != -1: self.chapter_index = chapter_index
         
+        self.images.clear()
+        self.images = library.get_pages(self.book_info["chapters"][chapter_index]["url"])
+        if self.images != []:
+            self.max_page_index = len(self.images) - 1
+            return True
+
         ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][self.chapter_index]["url"], self.html_session))
         ttr.start()
         image_urls = ttr.join()
@@ -152,6 +172,7 @@ class Reader:
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
         self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
+        self.window["reader_cache"].update(disabled=self.cache != [] or self.chapter_index == self.max_chapter_index)
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
         self.window["reader_page_img"].update(data=self.images[self.page_index])

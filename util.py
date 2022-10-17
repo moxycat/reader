@@ -26,7 +26,6 @@ class TreeRtClick(sg.Tree):
         item = tree.identify_row(event.y)
         tree.selection_set(item)
         super()._RightClickMenuCallback(event)
-        t = sg.Tree()
     
     def delete_selected(self):
         sel = self.Widget.selection()
