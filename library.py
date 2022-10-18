@@ -1,6 +1,6 @@
 import textwrap
 import PySimpleGUI as sg
-import sqlite3 as sql
+#import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
@@ -8,12 +8,13 @@ import re
 import base64
 import time
 import json
+from sqlcipher3 import dbapi2 as sql
 
 import mangakatana, settings
 from util import TreeRtClick, DEFAULT_COVER
 
 conn: sql.Connection = None
-cur: sql.Cursor = None
+#cur: sql.Cursor = None
 book_info = {}
 thumbnails = []
 
@@ -26,17 +27,19 @@ class BookList():
     DROPPED = 3
     PLAN_TO_READ = 4
 
-def init_db():
+def init_db(password="?"):
     global conn, cur
     conn = sql.connect(settings.settings["storage"]["path"], check_same_thread=False)
-    cur = conn.cursor()
-    return (conn, cur)
+    conn.execute(f"PRAGMA key='{password}'")
+    return (conn, None)
 
 def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
     if last_update is None: last_update = int(time.time())
     query = "INSERT INTO books (url, list, chapter, volume, score, start_date, end_date, last_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    cur = conn.cursor()
     cur.execute(query, (url, tables[where], ch, vol, score, sd, ed, last_update))
     conn.commit()
+    cur.close()
     update_info(url)
     refresh_book_info()
 
@@ -46,6 +49,7 @@ def update_info(url: str):
     cover = mangakatana.fetch(info["cover_url"])
     cover = base64.b64encode(cover)
     query = "UPDATE books SET title=?, alt_names=?, author=?, genres=?, status=?, description=?, cover=? WHERE url=?"    
+    cur = conn.cursor()
     cur.execute(query, (info["title"], json.dumps(info["alt_names"]), info["author"], json.dumps(info["genres"]), info["status"], info["description"], cover, url))
     
     # update chapters
@@ -53,6 +57,7 @@ def update_info(url: str):
         cur.execute("INSERT OR REPLACE INTO chapters VALUES (?, ?, ?, ?, ?)", (url, chapter["index"], chapter["url"], chapter["name"], time.mktime(chapter["date"].timetuple())))
     
     conn.commit()
+    cur.close()
     refresh_book_info()
     return (info, cover)
 
@@ -66,11 +71,14 @@ def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_u
     query = "UPDATE books SET " + ",".join(vals) + f" WHERE url='{url}'"
     tup = tuple(filter(lambda x: x is not None, [x[0] for x in args]))
     print(query, tup)
+    cur = conn.cursor()
     cur.execute(query, tup)
     conn.commit()
+    cur.close()
     refresh_book_info()
 
 def delete(url: str):
+    cur = conn.cursor()
     cur.execute("DELETE FROM books WHERE url=?", (url,))
     cur.execute("SELECT * FROM chapters WHERE book_url=?", (url,))
     rows = cur.fetchall()
@@ -80,21 +88,27 @@ def delete(url: str):
 
     cur.execute("DELETE FROM chapters WHERE book_url=?", (url,))
     conn.commit()
+    cur.close()
     refresh_book_info()
 
 def move(url: str, /, dest: BookList):
+    cur = conn.cursor()
     cur.execute("UPDATE books SET list=? WHERE url=?", (tables[dest], url))
     conn.commit()
+    cur.close()
     refresh_book_info()
 
 def get_book(url: str) -> tuple[bool, None | list]:
+    cur = conn.cursor()
     query = "SELECT * FROM books WHERE url=?"
     cur.execute(query, (url,))
     rows = cur.fetchall()
+    cur.close()
     if len(rows) > 1 or len(rows) == 0: return (False, None)
     return (True, rows[0])
 
 def set_pages(chapter_url: str, session):
+    cur = conn.cursor()
     image_urls = mangakatana.get_manga_chapter_images(chapter_url, session)
     images = mangakatana.download_images(image_urls)
 
@@ -110,27 +124,33 @@ def set_pages(chapter_url: str, session):
     for i, image in enumerate(images):
         cur.execute("INSERT INTO pages VALUES (?, ?, ?)", (chapter_url, i, image))
     conn.commit()
+    cur.close()
     return chapter_url
 
 def get_pages(chapter_url: str) -> list[bytes]:
+    cur = conn.cursor()
     query = "SELECT * FROM pages WHERE chapter_url=? ORDER BY page_index ASC"
     cur.execute(query, (chapter_url,))
     rows = cur.fetchall()
+    cur.close()
     images: list[bytes] = []
     for row in rows:
         images.append(row[2])
     return images
 
 def get_downloaded_chapters():
+    cur = conn.cursor()
     query = "SELECT DISTINCT chapter_url FROM pages"
     cur.execute(query)
     rows = cur.fetchall()
+    cur.close()
     return [row[0] for row in rows]
 
 # full refresh means all book info will be fetched from server first otherwise it'll just be read as-is from the database
 def refresh_book_info(full=False):
     global book_info
     book_info.clear()
+    cur = conn.cursor()
     query = "SELECT * FROM books"
     cur.execute(query)
     rows = cur.fetchall()
@@ -138,6 +158,7 @@ def refresh_book_info(full=False):
         for row in rows:
             update_info(row[0])
         refresh_book_info(False)
+        cur.close()
         return
     for row in rows:
         url = row[0]
@@ -162,6 +183,7 @@ def refresh_book_info(full=False):
         book_info.setdefault(url, {"ch": row[9], "vol": row[10], "score": row[11], "start_date": row[12], "end_date": row[13], "last_update": row[14], "info": info, "list": row[1]})
     
     book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
+    cur.close()
 
 def make_treedata():
     global thumbnails

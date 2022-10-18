@@ -94,7 +94,7 @@ layout = [
 ]
 
 print("init db")
-library.init_db()
+library.init_db("abc123")
 print("updating book info")
 library.refresh_book_info(settings.settings["storage"]["refresh"])
 print("done")
@@ -328,15 +328,19 @@ while True:
         chapter_and_date = ["{}{}{}".format(a[0], " " * (longestname - len(a[0]) + 5), a[1]) for a in zip(chapters, dates)]
         wdetails["details_chapters"].Widget.configure(width=max([len(a) for a in chapter_and_date]))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
+        l = len(reader.book_info["chapters"])
+        ix = l - reader.chapter_index - 1
+        wdetails["details_chapters"].Widget.itemconfigure(ix, bg="yellow")
         if is_in_library:
             downloaded_chapters = library.get_downloaded_chapters()
             for i, ch in enumerate(reader.book_info["chapters"][::-1]):
                 if ch["url"] in downloaded_chapters:
-                    wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
+                    if i == ix:
+                        wdetails["details_chapters"].Widget.itemconfigure(i, bg="#D6E865")
+                    else: wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
 
-            l = len(reader.book_info["chapters"])
-            ix = l - reader.chapter_index - 1
-            wdetails["details_chapters"].Widget.itemconfigure(ix, bg="yellow")
+            
+            
             pos = 1.0 - ((reader.chapter_index + 1) / len(reader.book_info["chapters"]))
             print(pos)
             wdetails["details_chapters"].set_vscroll_position(pos)
@@ -353,7 +357,9 @@ while True:
         downloaded_chapters = library.get_downloaded_chapters()
         for i, ch in enumerate(reader.book_info["chapters"][::-1]):
             if ch["url"] in downloaded_chapters:
-                wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
+                if i == ix1:
+                    wdetails["details_chapters"].Widget.itemconfigure(i, bg="#D6E865")
+                else: wdetails["details_chapters"].Widget.itemconfigure(i, bg="green")
             else:
                 wdetails["details_chapters"].Widget.itemconfigure(i, bg="white")
         wdetails["details_chapters"].Widget.itemconfigure(ix1, bg="yellow")
