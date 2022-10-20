@@ -1,0 +1,36 @@
+0. Prerequisite
+- MSVC (Install Visual Studio and download the C++ packages)
+
+1. Download and install OpenSSH for Windows
+- Link: https://slproweb.com/products/Win32OpenSSL.html
+- Download a non-light version
+
+2. Download TCL
+- Link: https://www.irontcl.com/
+- Rename tclsh86t.exe to tclsh.exe
+- Copy the path to the bin folder
+
+3. Download sqlcipher
+- Link: https://github.com/sqlcipher/sqlcipher
+- Make the following changes to the Makefile.msc file:
+* Find the string `-DSQLITE_TEMP_STORE=1` and change 1 to 2 in all instances.
+* Add the string `TCC = $(TCC) -DSQLITE_HAS_CODEC -I"<path to openssl installation>\include"` afterwards.
+* Find the string `LTLIBPATHS = $(LTLIBPATHS) /LIBPATH:$(ICULIBDIR)`, underneath it there should be an !ENDIF clause. Add the following right after it:
+`LTLIBPATHS = $(LTLIBPATHS) /LIBPATH:$(ICULIBDIR) /LIBPATH:"<path to openssl installation>\lib\VC\static"
+LTLIBS = $(LTLIBS) libcrypto64MT.lib libssl64MT.lib ws2_32.lib shell32.lib advapi32.lib gdi32.lib user32.lib crypt32.lib kernel32.lib`
+
+4. Building
+- Open up the x64 native tools command prompt (comes with Visual Studio)
+- Add the TCL bin folder to the path, i.e. `set PATH=%PATH%;<path to irontcl>`
+- Run `nmake /f Makefile.msc`
+- There should be a sqlite.dll and a sqlite.exe file in the folder
+
+5. Installing sqlcipher3 (python library)
+- Link: https://github.com/coleifer/sqlcipher3
+- Add environment variable OPENSSL_CONF=<path to openssl installation>\bin\openssl.cfg
+- Go to "lib" folder in your OpenSSL installation and make the following changes:
+* Rename libcrypto.def and libcrypto.lib to libeay32.def and libeay32.lib respectively
+* Rename libssl.def and libssl.lib to ssleay32.def and ssleay32.lib respectively
+- Copy files sqlite3.h and sqlite3.c from sqlcipher folder to sqlcipher3 folder
+- Run `python setup.py build_static`
+- Run `python setup.py install` to install the library

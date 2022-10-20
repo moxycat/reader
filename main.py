@@ -13,6 +13,7 @@ import mangakatana
 import chapter_view, library, settings
 from reader import Reader
 from util import DEFAULT_COVER
+import authenticate
 
 tabtable = {
     "tab_reading": "lib_tree_cr",
@@ -94,7 +95,9 @@ layout = [
 ]
 
 print("init db")
-library.init_db("abc123")
+if not library.init_db():
+    if not authenticate.do():
+        exit(0)
 print("updating book info")
 library.refresh_book_info(settings.settings["storage"]["refresh"])
 print("done")

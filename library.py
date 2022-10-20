@@ -1,3 +1,4 @@
+from sqlite3 import DatabaseError
 import textwrap
 import PySimpleGUI as sg
 #import sqlite3 as sql
@@ -27,11 +28,16 @@ class BookList():
     DROPPED = 3
     PLAN_TO_READ = 4
 
-def init_db(password="?"):
+def init_db(password=None):
     global conn, cur
     conn = sql.connect(settings.settings["storage"]["path"], check_same_thread=False)
-    conn.execute(f"PRAGMA key='{password}'")
-    return (conn, None)
+    if password is not None:
+        conn.execute(f"PRAGMA key='{password}'")
+    try:
+        conn.execute(f"SELECT * FROM books")
+    except:
+        conn.close()
+        return False
 
 def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
     if last_update is None: last_update = int(time.time())
