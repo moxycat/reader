@@ -1,14 +1,13 @@
 import base64
-from cgitb import enable
 from io import BytesIO
 from datetime import datetime
 import json
 import PySimpleGUI as sg
 from PIL import Image, ImageTk
-import requests
 import textwrap
 import base64
 import time
+import os
 
 import mangakatana
 import chapter_view, library, settings
@@ -24,14 +23,16 @@ tabtable = {
     "tab_ptr": "lib_tree_ptr"
 }
 
+sg.theme("Default1")
+sg.set_options(font=("Consolas", 10))
+
+if not os.path.exists("settings.json"):
+    sg.popup_error("Settings file missing!")
+    exit(1)
 settings.read_settings()
 
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
-elif settings.settings["ui"]["theme"] == "Light":
-    sg.theme("Default1")
-
-sg.set_options(font=("Consolas", 10))
 
 def popup_loading():
     return sg.Window("", layout=[
@@ -99,6 +100,11 @@ print("init db")
 if not library.init_db():
     if not authenticate.do():
         exit(0)
+
+if not library.verify_schema():
+    sg.popup_error("Your library database file is incompatible!")
+    exit(1)
+
 print("updating book info")
 if settings.settings["general"]["offline"]:
     library.refresh_book_info()
@@ -321,8 +327,10 @@ while True:
         
         wind["read_latest"].update(visible=True)
         wind["details"].update(visible=True)
-        im = Image.open(BytesIO(base64.b64decode(reader.book_info["cover"])))
-        
+        try:
+            im = Image.open(BytesIO(base64.b64decode(reader.book_info["cover"])))
+        except:
+            im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
         wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)), visible=True)

@@ -173,6 +173,7 @@ class Reader:
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
         self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
         self.window["reader_cache"].update(disabled=self.cache != [] or self.chapter_index == self.max_chapter_index)
+        self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"])
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
         self.window["reader_page_img"].update(data=self.images[self.page_index])

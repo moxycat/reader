@@ -1,2 +1,2 @@
 all:
-	pyinstaller --onefile -w --name a main.py
+	cxfreeze -c main.py --target-dir dist

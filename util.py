@@ -48,3 +48,10 @@ def pngify(data):
         im.close()
         return outbuf.getvalue()
     except: return None
+
+def flatten(x):
+    for e in x:
+        if isinstance(e, list):
+            yield from flatten(e)
+        else:
+            yield e

@@ -1,4 +1,4 @@
-from sqlite3 import DatabaseError
+from msilib import schema
 import textwrap
 import PySimpleGUI as sg
 #import sqlite3 as sql
@@ -34,11 +34,54 @@ def init_db(password=None):
     if password is not None:
         conn.execute(f"PRAGMA key='{password}'")
     try:
-        conn.execute(f"SELECT * FROM books")
+        conn.execute(f"SELECT * FROM books LIMIT 1")
         return True
     except:
         conn.close()
         return False
+
+books_schema = [
+    (0, 'url', 'TEXT', 0, None, 1),
+    (1, 'list', 'TEXT', 1, '"books_ptr"', 0),
+    (2, 'title', 'TEXT', 0, None, 0),
+    (3, 'alt_names', 'TEXT', 0, None, 0),
+    (4, 'cover', 'BLOB', 0, None, 0),
+    (5, 'author', 'TEXT', 0, None, 0),
+    (6, 'genres', 'TEXT', 0, None, 0),
+    (7, 'status', 'TEXT', 0, None, 0),
+    (8, 'description', 'TEXT', 0, None, 0),
+    (9, 'chapter', 'INTEGER', 1, '0', 0),
+    (10, 'volume', 'INTEGER', 1, '0', 0),
+    (11, 'score', 'INTEGER', 1, '0', 0),
+    (12, 'start_date', 'INTEGER', 1, '-1', 0),
+    (13, 'end_date', 'INTEGER', 1, '-1', 0),
+    (14, 'last_update', 'INTEGER', 1, '-1', 0)
+]
+chapters_schema = [
+    (0, 'book_url', 'TEXT', 0, None, 0),
+    (1, 'chapter_index', 'INT', 0, None, 0),
+    (2, 'chapter_url', 'TEXT', 0, None, 1),
+    (3, 'title', 'TEXT', 0, None, 0),
+    (4, 'date', 'INT', 0, None, 0)
+]
+pages_schema = [
+    (0, 'chapter_url', 'TEXT', 0, None, 0),
+    (1, 'page_index', 'INT', 0, None, 0),
+    (2, 'data', 'BLOB', 0, None, 0)
+]
+
+def verify_schema():
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type=\"table\" ORDER BY name")
+    names = cur.fetchall()
+    names = [x[0] for x in names]
+    if names != ["books", "chapters", "pages"]: return False
+    schemas = [books_schema, chapters_schema, pages_schema]
+    for i, name in enumerate(names):
+        cur.execute(f"PRAGMA TABLE_INFO({name})")
+        rows = cur.fetchall()
+        if rows != schemas[i]: return False
+    return True
 
 def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
     if last_update is None: last_update = int(time.time())

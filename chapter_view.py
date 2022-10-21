@@ -1,4 +1,3 @@
-from select import select
 import PySimpleGUI as sg
 
 def RightClickMenuCallback(event, element):
