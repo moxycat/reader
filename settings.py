@@ -3,6 +3,8 @@ import json
 
 settings = {}
 
+default_settings = {}
+
 def read_settings():
     global settings
     with open("settings.json", "r") as f:
@@ -12,6 +14,9 @@ def make_window():
     global settings
     read_settings()
     layout = [
+        [sg.Frame("General", [
+            [sg.Checkbox("Offline mode", key="settings_offline", tooltip="Disables all network connectivity of the app.", default=settings["general"]["offline"])]
+        ])],
         [sg.Frame("UI", [
             [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")]
         ]

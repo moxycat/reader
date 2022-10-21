@@ -35,6 +35,7 @@ def init_db(password=None):
         conn.execute(f"PRAGMA key='{password}'")
     try:
         conn.execute(f"SELECT * FROM books")
+        return True
     except:
         conn.close()
         return False
@@ -54,6 +55,10 @@ def update_info(url: str):
     info = mangakatana.get_manga_info(url)
     cover = mangakatana.fetch(info["cover_url"])
     cover = base64.b64encode(cover)
+    info["cover"] = cover
+    is_in_library, _ = get_book(url)
+    if not is_in_library: return info
+    
     query = "UPDATE books SET title=?, alt_names=?, author=?, genres=?, status=?, description=?, cover=? WHERE url=?"    
     cur = conn.cursor()
     cur.execute(query, (info["title"], json.dumps(info["alt_names"]), info["author"], json.dumps(info["genres"]), info["status"], info["description"], cover, url))
@@ -65,7 +70,8 @@ def update_info(url: str):
     conn.commit()
     cur.close()
     refresh_book_info()
-    return (info, cover)
+    
+    return info
 
 # update user's data about a book
 def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_update=None):
@@ -113,6 +119,33 @@ def get_book(url: str) -> tuple[bool, None | list]:
     if len(rows) > 1 or len(rows) == 0: return (False, None)
     return (True, rows[0])
 
+def get_book_info(url: str):
+    refresh_book_info()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM books WHERE url=?", (url,))
+    rows = cur.fetchall()
+    if rows == []: return {}
+    row = rows[0]
+    chapters = []
+
+    cur.execute("SELECT * FROM chapters WHERE book_url=? ORDER BY chapter_index ASC", (url,))
+    chapter_rows = cur.fetchall()
+    for chapter_row in chapter_rows:
+        chapters.append({"index": chapter_row[1], "name": chapter_row[3], "url": chapter_row[2], "date": datetime.fromtimestamp(chapter_row[4])})
+
+    return {
+        "url": row[0],
+        "cover_url": "",
+        "cover": row[4],
+        "title": row[2],
+        "alt_names": json.loads(row[3]),
+        "author": row[5],
+        "genres": json.loads(row[6]),
+        "status": row[7],
+        "description": row[8],
+        "chapters": chapters
+        }
+
 def set_pages(chapter_url: str, session):
     cur = conn.cursor()
     image_urls = mangakatana.get_manga_chapter_images(chapter_url, session)
@@ -143,6 +176,12 @@ def get_pages(chapter_url: str) -> list[bytes]:
     for row in rows:
         images.append(row[2])
     return images
+
+def delete_pages(chapter_url: str):
+    cur = conn.cursor()
+    query = "DELETE FROM pages WHERE chapter_url=?"
+    cur.execute(query, (chapter_url,))
+    conn.commit()
 
 def get_downloaded_chapters():
     cur = conn.cursor()
@@ -236,7 +275,7 @@ def make_window():
                 data=tds[0], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_cr", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
+                right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
             )
         ]
@@ -247,7 +286,7 @@ def make_window():
                 data=tds[1], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_cmpl", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
+                right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
             )
         ]
@@ -258,7 +297,7 @@ def make_window():
                 data=tds[2], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_idle", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
+                right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
                 expand_x=True            
             )
         ]
@@ -269,7 +308,7 @@ def make_window():
                 data=tds[3], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_drop", row_height=30, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
+                right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
                 expand_x=True
             )
         ]
@@ -280,7 +319,7 @@ def make_window():
                 data=tds[4], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
                 key="lib_tree_ptr", row_height=30, num_rows=10, enable_events=True,
                 max_col_width=title_max_len, justification="l",
-                right_click_menu=["", ["Show in search", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
+                right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
                 expand_x=True
             )
         ]
@@ -321,7 +360,8 @@ def start_reading():
     return ans
 
 def edit_chapter_progress(url):
-    update_info(url)
+    if not settings.settings["general"]["offline"]:
+        update_info(url)
     refresh_book_info()
     max_ch = len(book_info[url]["info"]["chapters"])
     layout = [

@@ -4,7 +4,7 @@ import library
 def do():
     layout = [
         [sg.Text("Authenticate to access encrypted library.")],
-        [sg.Text("Password"), sg.Input(password_char="*", focus=True, key="password")],
+        [sg.Text("Password"), sg.Input(password_char="*", focus=True, key="password", size=(30, 1))],
         [sg.Text("", key="status", text_color="red")],
         [sg.Button("Submit", bind_return_key=True, key="submit"), sg.Button("Exit", key="exit")]
     ]
@@ -21,4 +21,5 @@ def do():
                 w["password"].update("")
         if e == None or e == "exit":
             break
+    w.close()
     return result
