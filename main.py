@@ -22,6 +22,13 @@ tabtable = {
     "tab_dropped": "lib_tree_drop",
     "tab_ptr": "lib_tree_ptr"
 }
+list2tree = {
+    "books_cr": "lib_tree_cr",
+    "books_cmpl": "lib_tree_cmpl",
+    "books_idle": "lib_tree_idle",
+    "books_drop": "lib_tree_drop",
+    "books_ptr": "lib_tree_ptr"
+}
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10))
@@ -30,6 +37,7 @@ if not os.path.exists("settings.json"):
     sg.popup_error("Settings file missing!")
     exit(1)
 settings.read_settings()
+settings.verify()
 
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
@@ -49,16 +57,16 @@ search_controls = [
     ],
     [
         sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white"),
-        sg.Input("", key="search_bar", size=(90, 1), focus=True, expand_x=True),
+        sg.Input("", key="search_bar", size=(125, 1), focus=True, expand_x=True),
         sg.Button("⌕", key="search", bind_return_key=True),
         sg.Button("x", key="search_cancel")
     ],
-    [sg.Text("", key="search_status", size=(90, 1))],
+    [sg.Text("", key="search_status", size=(125, 1))],
     [sg.HSeparator()],
     [
         sg.vtop(sg.Column(
             [
-                [sg.Listbox([], size=(50, 20), bind_return_key=False, enable_events=True, key="book_list")]
+                [sg.Listbox([], size=(50, 27), bind_return_key=False, enable_events=True, key="book_list")]
             ], element_justification="c", vertical_alignment="c")),
         sg.VSeparator(),
         #sg.Column(preview, scrollable=False, visible=False, key="preview_col"),
@@ -114,15 +122,15 @@ print("done")
 
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
 wind.TKroot.focus_force()
+
 if settings.settings["general"]["offline"]:
     wind["search"].update(disabled=True)
     wind["search_bar"].update(disabled=True)
     wind["search_cancel"].update(disabled=True)
     wind["search_method"].update(disabled=True)
+
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
-
-book_list_ix = -1
 
 wdetails = None
 wreadlist = None
@@ -461,13 +469,14 @@ while True:
         if wloading is not None: wloading.close()
         set_status(
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(readers[-1].images)} pages ({round(float(len(readers[-1].images))/(download_end_time - download_start_time), 2)} page/s)")
+        is_in_library, rows = library.get_book(readers[-1].book_info["url"])
         if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
             library.update_userdata(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
             if wreadlist is not None:
                 print("updating entry...")
                 url = readers[-1].book_info["url"]
-                wreadlist[[x[1] for x in tabtable.items()][which_list]].update(key=url, value=[
+                wreadlist[list2tree[rows[1]]].update(key=url, value=[
                     textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
                     library.book_info[url]["score"],
                     "{}/{}".format(

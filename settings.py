@@ -10,6 +10,30 @@ def read_settings():
     with open("settings.json", "r") as f:
         settings = json.loads(f.read())
 
+
+def verify():
+    schema = {
+        "general": {
+            "offline": False
+        },
+        "ui": {
+            "theme": "Light"
+        },
+        "reader": {
+            "w": "1300", "h": "900", "filter": "0"
+        },
+        "server": {
+            "source": "1"
+        },
+        "storage": {
+            "path": "b1.db",
+            "refresh": False
+        }
+    }
+    if settings.keys() != schema.keys(): return False
+    #for i, key in enumerate(settings.keys()):
+
+
 def make_window():
     global settings
     read_settings()
