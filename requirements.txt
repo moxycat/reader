@@ -3,7 +3,5 @@ pillow
 bs4
 requests
 lxml
-asyncio
-aiohttp
 requests_html
 sqlite3

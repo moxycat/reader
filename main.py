@@ -411,15 +411,17 @@ while True:
         ixs = wdetails["details_chapters"].get_indexes()
         #ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs_original]
         #chapters = (reader.book_info["chapters"][ix]["url"] for ix in ixs)
-        wdetails["details_chapters"].update(disabled=True)
-        for ix in ixs:
+        wdetails["details_chapters"].update(disabled=True, set_to_index=[])
+        sg.one_line_progress_meter("Downloading...", 0, len(ixs), key="download_progress", keep_on_top=True, orientation="h", no_titlebar=True, no_button=True)
+        for i, ix in enumerate(ixs, start=1):
             if not library.set_pages(reader.book_info["chapters"][len(reader.book_info["chapters"]) - ix - 1]["url"], reader.html_session):
                 sg.popup("Failed to download [{}]".format(reader.book_info["chapters"][ix]["url"]), title="Download error")
             else:
                 wdetails["details_chapters"].Widget.itemconfigure(ix, bg="green")
                 if len(reader.book_info["chapters"]) - ix - 1 == reader.chapter_index:
                     wdetails["details_chapters"].Widget.itemconfigure(ix, bg="#D6E865")
-        wdetails["details_chapters"].update(disabled=False)
+            sg.one_line_progress_meter("Downloading...", i, len(ixs), key="download_progress", keep_on_top=True, orientation="h", no_titlebar=True, no_button=True)
+        wdetails["details_chapters"].update(disabled=False, set_to_index=[])
 
     if w == wdetails and e == "Delete":
         ixs = wdetails["details_chapters"].get_indexes()
@@ -540,6 +542,34 @@ while True:
         wreadlist["lib_tree_ptr"].bind("<Double-Button-1>", "_open_book")
         library.get_original(wreadlist["lib_tree_cr"])
     
+    if w == wreadlist and e == "Check for updates":
+        library.refresh_book_info(full=True)
+        tds = library.make_treedata()
+        wreadlist["lib_tree_cr"].update(tds[0])
+        wreadlist["lib_tree_cmpl"].update(tds[1])
+        wreadlist["lib_tree_idle"].update(tds[2])
+        wreadlist["lib_tree_drop"].update(tds[3])
+        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.refresh()
+    
+    if w == wreadlist and e in ["Title::title", "Score::score", "Chapters::chapters", "Volumes::volumes", "Latest upload::upload", "Last update::update"]:
+        orders = {
+            "Title::title": library.OrderBy.TITLE,
+            "Score::score": library.OrderBy.SCORE,
+            "Chapters::chapters": library.OrderBy.CHAPTERS,
+            "Volumes::volumes": library.OrderBy.VOLUMES,
+            "Latest upload::upload": library.OrderBy.UPLOAD,
+            "Last update::update": library.OrderBy.UPDATE
+        }
+        tds = library.make_treedata(orders[e])
+        wreadlist["lib_tree_cr"].update(tds[0])
+        wreadlist["lib_tree_cmpl"].update(tds[1])
+        wreadlist["lib_tree_idle"].update(tds[2])
+        wreadlist["lib_tree_drop"].update(tds[3])
+        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.refresh()
+        pass
+    
     if e == "lib_search":
         q = v["lib_search_query"]
         tab = v["tab_group"]
@@ -631,7 +661,9 @@ while True:
     
     if w == wreadlist and e == "View chapters":
         tab = v["tab_group"]
-        url = v[tabtable[tab]][0]
+        try:
+            url = v[tabtable[tab]][0]
+        except: continue
         # finish this part
 
     # move
@@ -671,7 +703,7 @@ while True:
             url = v[tabtable[tab]][0]
         except: continue
         print(url)
-        refresh_ui(url, "book_list_got_info")
+        refresh_ui(url, "lib_open_book")
         #wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "lib_open_book")
     
     if e == "lib_open_book":

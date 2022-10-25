@@ -10,14 +10,10 @@ import base64
 import time
 import json
 from sqlcipher3 import dbapi2 as sql
+from concurrent.futures import ThreadPoolExecutor
 
 import mangakatana, settings
 from util import TreeRtClick, DEFAULT_COVER
-
-conn: sql.Connection = None
-#cur: sql.Cursor = None
-book_info = {}
-thumbnails = []
 
 tables = ["books_cr", "books_cmpl", "books_idle", "books_drop", "books_ptr"]
 
@@ -27,6 +23,21 @@ class BookList():
     ON_HOLD = 2
     DROPPED = 3
     PLAN_TO_READ = 4
+
+class OrderBy():
+    UPLOAD = 0,
+    UPDATE = 1,
+    TITLE = 2,
+    SCORE = 3,
+    CHAPTERS = 4,
+    VOLUMES = 5,
+
+conn: sql.Connection = None
+book_info = {}
+thumbnails = []
+current_order = OrderBy.UPLOAD
+
+
 
 def init_db(password=None):
     global conn, cur
@@ -235,17 +246,18 @@ def get_downloaded_chapters():
     return [row[0] for row in rows]
 
 # full refresh means all book info will be fetched from server first otherwise it'll just be read as-is from the database
-def refresh_book_info(full=False):
-    global book_info
+def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
+    global book_info, current_order
     book_info.clear()
     cur = conn.cursor()
     query = "SELECT * FROM books"
     cur.execute(query)
     rows = cur.fetchall()
     if full:
-        for row in rows:
-            update_info(row[0])
-        refresh_book_info(False)
+        urls = [row[0] for row in rows]
+        with ThreadPoolExecutor() as pool:
+            pool.map(update_info, urls)
+        refresh_book_info(full=False)
         cur.close()
         return
     for row in rows:
@@ -269,13 +281,30 @@ def refresh_book_info(full=False):
             "chapters": chapters
         }
         book_info.setdefault(url, {"ch": row[9], "vol": row[10], "score": row[11], "start_date": row[12], "end_date": row[13], "last_update": row[14], "info": info, "list": row[1]})
-    
-    book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"], reverse=True))
     cur.close()
 
-def make_treedata():
+    match order_by:
+        case OrderBy.UPLOAD:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"]))
+        case OrderBy.UPDATE:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["last_update"], reverse=True))
+        case OrderBy.TITLE:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["title"]))
+        case OrderBy.SCORE:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["score"], reverse=True))
+        case OrderBy.CHAPTERS:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["ch"], reverse=True))
+        case OrderBy.VOLUMES:
+            book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["vol"], reverse=True))
+    
+    if order_by == current_order:
+        book_info = dict(reversed(book_info.items()))
+    current_order = order_by
+
+
+def make_treedata(order_by=OrderBy.UPLOAD):
     global thumbnails
-    refresh_book_info()
+    refresh_book_info(order_by=order_by)
     tds = [sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData()]
 
     for i, (k, v) in enumerate(book_info.items()):
@@ -370,7 +399,7 @@ def make_window():
 
     layout = [
         [
-            sg.Menu([["Library", ["Refresh local database", "Sort by", ["Title", "Score", "Chapters", "Volumes", "Latest upload", "Last update"]]]], key="lib_menu")
+            sg.Menu([["Library", ["Check for updates", "Sort by", ["Title::title", "Score::score", "Chapters::chapters", "Volumes::volumes", "Latest upload::upload", "Last update::update"]]]], key="lib_menu")
         ],
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
@@ -536,9 +565,12 @@ def search(query, tr: TreeRtClick):
     removed.clear()
     for id, url in tr.IdToKey.items():
         if url == "": continue
-        if re.match(query, book_info[url]["info"]["title"], re.IGNORECASE) is None:
-            ix = tr.Widget.index(id)
-            removed.append((ix, id))
+        try:
+            if re.match(query, book_info[url]["info"]["title"], re.IGNORECASE) is None:
+                ix = tr.Widget.index(id)
+                removed.append((ix, id))
+        except:
+            return
     print(removed)
 
     for _, id in removed:
