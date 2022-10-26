@@ -693,8 +693,13 @@ while True:
         wreadlist.refresh()
         
     if w == wreadlist and e == "Refresh":
-        wreadlist.close()
-        wind.perform_long_operation(library.make_window, "lib_window_made")
+        tds = library.make_treedata()
+        wreadlist["lib_tree_cr"].update(tds[0])
+        wreadlist["lib_tree_cmpl"].update(tds[1])
+        wreadlist["lib_tree_idle"].update(tds[2])
+        wreadlist["lib_tree_drop"].update(tds[3])
+        wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.refresh()
     
     if e in [v + "_open_book" for _, v in tabtable.items()]:
         tab = v["tab_group"]

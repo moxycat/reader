@@ -399,7 +399,7 @@ def make_window():
 
     layout = [
         [
-            sg.Menu([["Library", ["Check for updates", "Sort by", ["Title::title", "Score::score", "Chapters::chapters", "Volumes::volumes", "Latest upload::upload", "Last update::update"]]]], key="lib_menu")
+            sg.Menu([["Library", ["&Refresh", "&Check for updates", "&Sort by", ["&Title::title", "&Score::score", "&Chapters::chapters", "&Volumes::volumes", "Latest up&load::upload", "Last up&date::update"]]]], key="lib_menu")
         ],
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
