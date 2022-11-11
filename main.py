@@ -259,12 +259,13 @@ while True:
         wind.refresh()
         have_searched = True
         mangakatana.stop_search = False
-        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
+        searcher_thread = wind.perform_long_operation(lambda: mangakatana.mp_search(query, mode), "search_got_results")
 
     if e == "search_cancel":
         if searcher_thread is not None:
             wind["search_status"].update("Cancelling search...")
             mangakatana.stop_search = True
+            searcher_thread = None
 
     if e == "search_got_results":
         w["search_bar"].update(disabled=False)

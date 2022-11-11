@@ -1,6 +1,6 @@
 create table books (
     url text primary key,
-    list text not null default "books_ptr",
+    list text,
 
     title text,
     alt_names text,

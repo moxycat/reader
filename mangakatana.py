@@ -9,12 +9,14 @@ from urllib.parse import quote_plus
 import asyncio, aiohttp
 import re
 import concurrent.futures
+import threading
 
 import settings, util
 
 from requests_html import HTMLSession
 
 stop_search = False
+stop_event = threading.Event()
 
 def get_manga_info(url: str) -> dict:
     try:
@@ -95,8 +97,77 @@ def search2(query: str, search_by: int = 0) -> list:
 
     for soup in soups:
         print(len(soup.prettify()))
-    
 
+def search_one(query: str, search_by: int = 0, page: int = 1) -> list[dict]:
+    search_by = "book_name" if search_by == 0 else "author"
+    url = f"https://mangakatana.com/page/{page}?search={quote_plus(query)}&search_by={search_by}"
+    try:
+        resp = r.get(url)
+    except:
+        return []
+    while len(resp.text) == 0:
+        if stop_event.is_set(): return []
+        resp = r.get(url)
+    if resp.status_code != 200:
+        resp.close()
+        return []
+    
+    soup = BeautifulSoup(resp.text, "lxml")
+    book_list = soup.find("div", {"id": "book_list"})
+    if book_list is None: # 1 result
+        title = soup.find("h1", {"class": "heading"}).text.strip()
+        link = soup.find("link", {"rel": "canonical"}).get("href")
+        return [{"title": title, "url": link}]
+    
+    results = []
+    books = book_list.find_all("div", {"class": "item"}) # multiple results
+    for book in books:
+        if stop_event.is_set(): return []
+        title = book.find("h3", {"class": "title"}).find("a").text.strip()
+        a = book.find("div", {"class": "wrap_img"}).find("a")
+        link = a.get("href")
+        results.append({"title": title, "url": link})
+    return results
+
+def mp_search(query: str, search_by: int = 0) -> list[dict]:
+    url = f"https://mangakatana.com/page/1?search={quote_plus(query)}&search_by=" + ("book_name" if search_by == 0 else "author")
+    try:
+        resp = r.get(url)
+    except: return []
+    if resp.status_code != 200:
+        resp.close()
+        return []
+    try:
+        soup = BeautifulSoup(resp.text, "lxml")
+        nresults = soup.find("div", {"class": "widget-title"}).find("span").text.strip()
+        if not nresults.startswith("Search"): nresults = 1
+        else: nresults = int(nresults.removeprefix("Search results (").removesuffix(")"))
+        pages = (nresults // 20) + 1
+
+        book_list = soup.find("div", {"id": "book_list"})
+        if book_list is None:
+            title = soup.find("h1", {"class": "heading"}).text.strip()
+            link = soup.find("link", {"rel": "canonical"}).get("href")
+            return [{"title": title, "url": link}]
+    
+        results = []
+        books = book_list.find_all("div", {"class": "item"}) # multiple results
+        for book in books:
+            title = book.find("h3", {"class": "title"}).find("a").text.strip()
+            a = book.find("div", {"class": "wrap_img"}).find("a")
+            link = a.get("href")
+            results.append({"title": title, "url": link})
+
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            args = list(zip([query] * (nresults - 1), [search_by] * (nresults - 1), range(2, pages + 1)))
+            for ret in pool.map(lambda x: search_one(*x), args):
+                results.extend(ret)
+                if stop_search: stop_event.set()
+        
+        stop_event.clear()
+        if stop_search: return None
+        return results
+    except: return None
 
 def search(query: str, search_by: int = 0) -> list:
     query = quote_plus(query)

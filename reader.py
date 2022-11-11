@@ -88,11 +88,11 @@ class Reader:
 
     def mw_vscroll(self, ev):
         direction = int(-1 * (ev.delta / 120)) # 1 = down, -1 = up
-        self.set_vscroll(direction * 0.05)
+        self.inc_vscroll(direction * 0.05)
     
     def mw_hscroll(self, ev):
         direction = int(-1 * (ev.delta / 120)) # 1 = down, -1 = up
-        self.set_hscroll(direction * 0.05)
+        self.inc_hscroll(direction * 0.05)
 
     def zoom(self):
         im = Image.open(BytesIO(self.images[self.page_index]))
@@ -146,6 +146,10 @@ class Reader:
         self.window.bind("<Configure>", "reader_resized")
         self.window.TKroot.bind("<Unmap>", self.check_if_mini)
         self.window.bind("<Map>", "reader_shown")
+        self.window.TKroot.bind("<Prior>", lambda _: self.set_vscroll(0.0))
+        self.window.TKroot.bind("<Next>", lambda _: self.set_vscroll(1.0))
+        self.window.TKroot.bind("<Home>", lambda _: self.set_hscroll(0.0))
+        self.window.TKroot.bind("<End>", lambda _: self.set_hscroll(1.0))
 
         self.window["reader_page_img"].bind("<Button-1>", "_reader_go_back")
         self.window["reader_page_img"].bind("<Button-3>", "_reader_go_fwd")
@@ -166,7 +170,13 @@ class Reader:
             f"{str(self.page_index + 1).zfill(2)}/{str(self.max_page_index + 1).zfill(2)}")
         self.window.TKroot.title(self.book_info["chapters"][self.chapter_index]["name"])
         self.window["reader_go_prev_ch"].update(disabled=self.chapter_index == 0)
+        self.window["reader_go_prev_ch"].update(disabled=settings.settings["general"]["offline"])
+        if self.chapter_index - 1 >= 0 and self.book_info["chapters"][self.chapter_index - 1]["url"] in library.get_downloaded_chapters():
+            self.window["reader_go_prev_ch"].update(disabled=False)
         self.window["reader_go_next_ch"].update(disabled=self.chapter_index == self.max_chapter_index)
+        self.window["reader_go_next_ch"].update(disabled=settings.settings["general"]["offline"])
+        if self.chapter_index + 1 <= self.max_chapter_index and self.book_info["chapters"][self.chapter_index + 1]["url"] in library.get_downloaded_chapters():
+            self.window["reader_go_next_ch"].update(disabled=False)
         self.window["reader_go_back"].update(disabled=self.page_index == 0)
         self.window["reader_go_fwd"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
@@ -213,15 +223,25 @@ class Reader:
             self.page_index -= 1
             self.refresh()
     
-    def set_hscroll(self, d):
+    def inc_hscroll(self, d):
         if self.hscroll + d >= 0 and self.hscroll + d <= 1.0:
             self.hscroll += d
             self.window["reader_page_img_col"].Widget.canvas.xview_moveto(self.hscroll)
 
-    def set_vscroll(self, d):
+    def inc_vscroll(self, d):
         if self.vscroll + d >= 0 and self.vscroll + d <= 1.0:
             self.vscroll += d
             self.window["reader_page_img_col"].Widget.canvas.yview_moveto(self.vscroll)
+    
+    def set_vscroll(self, val):
+        if val >= 0 and val <= 1:
+            self.vscroll = val
+            self.window["reader_page_img_col"].Widget.canvas.yview_moveto(val)
+
+    def set_hscroll(self, val):
+        if val >= 0 and val <= 1:
+            self.hscroll = val
+            self.window["reader_page_img_col"].Widget.canvas.xview_moveto(val)
 
     def next_chapter(self) -> None:
         if self.chapter_index + 1 > self.max_chapter_index: return
@@ -281,10 +301,10 @@ class Reader:
         if event == "reader_page_num": self.jump()
         if event == "reader_go_prev_ch": self.prev_chapter()
         if event == "reader_go_next_ch": self.next_chapter()
-        if event == "reader_scroll_right": self.set_hscroll(0.01)
-        if event == "reader_scroll_left": self.set_hscroll(-0.01)
-        if event == "reader_scroll_down": self.set_vscroll(0.01)
-        if event == "reader_scroll_up": self.set_vscroll(-0.01)
+        if event == "reader_scroll_right": self.inc_hscroll(0.01)
+        if event == "reader_scroll_left": self.inc_hscroll(-0.01)
+        if event == "reader_scroll_down": self.inc_vscroll(0.01)
+        if event == "reader_scroll_up": self.inc_vscroll(-0.01)
         if event == "reader_resized": self.resized()
         if event == "reader_loaded_chapter":
             #self.window["reader_go_next_ch"].update(disabled=False)
