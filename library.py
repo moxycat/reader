@@ -9,7 +9,8 @@ import re
 import base64
 import time
 import json
-from sqlcipher3 import dbapi2 as sql
+#from sqlcipher3 import dbapi2 as sql
+import sqlite3 as sql
 from concurrent.futures import ThreadPoolExecutor
 
 import mangakatana, settings
@@ -37,7 +38,7 @@ book_info = {}
 thumbnails = []
 current_order = OrderBy.UPLOAD
 
-
+deletes = 0
 
 def init_db(password=None):
     global conn, cur
@@ -144,6 +145,7 @@ def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_u
     refresh_book_info()
 
 def delete(url: str):
+    global deletes
     cur = conn.cursor()
     cur.execute("DELETE FROM books WHERE url=?", (url,))
     cur.execute("SELECT * FROM chapters WHERE book_url=?", (url,))
@@ -155,6 +157,7 @@ def delete(url: str):
     cur.execute("DELETE FROM chapters WHERE book_url=?", (url,))
     conn.commit()
     cur.close()
+    deletes += 1
     refresh_book_info()
 
 def move(url: str, /, dest: BookList):
@@ -163,6 +166,11 @@ def move(url: str, /, dest: BookList):
     conn.commit()
     cur.close()
     refresh_book_info()
+
+def cleanup_and_close():
+    if deletes == 0: return
+    conn.execute("VACUUM")
+    conn.close()
 
 def get_book(url: str) -> tuple[bool, None | list]:
     cur = conn.cursor()

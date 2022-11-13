@@ -32,10 +32,10 @@ class TreeRtClick(sg.Tree):
         for item in sel:
             self.Widget.delete(item)
 
-def popup_loading():
+def popup_loading(text="Loading..."):
     return sg.Window("", layout=[
         [
-            sg.Text("Loading...", font=("Consolas", 14))
+            sg.Text(text, font=("Consolas", 14))
         ]
     ], modal=True, no_titlebar=True, finalize=True)
 

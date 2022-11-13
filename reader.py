@@ -169,21 +169,25 @@ class Reader:
         self.window["reader_page_num"].update(
             f"{str(self.page_index + 1).zfill(2)}/{str(self.max_page_index + 1).zfill(2)}")
         self.window.TKroot.title(self.book_info["chapters"][self.chapter_index]["name"])
-        self.window["reader_go_prev_ch"].update(disabled=self.chapter_index == 0)
         self.window["reader_go_prev_ch"].update(disabled=settings.settings["general"]["offline"])
         if self.chapter_index - 1 >= 0 and self.book_info["chapters"][self.chapter_index - 1]["url"] in library.get_downloaded_chapters():
             self.window["reader_go_prev_ch"].update(disabled=False)
-        self.window["reader_go_next_ch"].update(disabled=self.chapter_index == self.max_chapter_index)
+        self.window["reader_go_prev_ch"].update(disabled=self.chapter_index == 0)
+
+
+        a = (self.chapter_index == self.max_chapter_index) or not (self.chapter_index + 1 <= self.max_chapter_index and self.book_info["chapters"][self.chapter_index + 1]["url"] in library.get_downloaded_chapters())    
         self.window["reader_go_next_ch"].update(disabled=settings.settings["general"]["offline"])
         if self.chapter_index + 1 <= self.max_chapter_index and self.book_info["chapters"][self.chapter_index + 1]["url"] in library.get_downloaded_chapters():
             self.window["reader_go_next_ch"].update(disabled=False)
+        self.window["reader_go_next_ch"].update(disabled=self.chapter_index == self.max_chapter_index)
         self.window["reader_go_back"].update(disabled=self.page_index == 0)
         self.window["reader_go_fwd"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
-        self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
-        self.window["reader_cache"].update(disabled=self.cache != [] or self.chapter_index == self.max_chapter_index)
         self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"])
+        #self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
+        self.window["reader_cache"].update(disabled=self.cache != [] or self.chapter_index == self.max_chapter_index)
+        
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
         self.window["reader_page_img"].update(data=self.images[self.page_index])

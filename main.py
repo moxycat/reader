@@ -12,7 +12,7 @@ import os
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
-from util import DEFAULT_COVER
+from util import DEFAULT_COVER, popup_loading
 import authenticate
 
 tabtable = {
@@ -41,13 +41,6 @@ settings.verify()
 
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
-
-def popup_loading():
-    return sg.Window("", layout=[
-        [
-            sg.Text("Loading...", font=("Consolas", 14))
-        ]
-    ], modal=True, no_titlebar=True, finalize=True)
 
 menu = [["&Readers", []], ["&Library", ["&Open library", "&History"]], ["&Settings", ["&Preferences", "&Help"]]]
 
@@ -245,8 +238,13 @@ while True:
             readers[ix].window.bring_to_front()
         except: continue
 
-    if w == wind and e == sg.WIN_CLOSED: break
+    if w == wind and e == sg.WIN_CLOSED:
+        wloading = popup_loading("Saving changes...")
+        wloading.read(timeout=0)
+        wind.perform_long_operation(library.cleanup_and_close, "close_ready")
     
+    if e == "close_ready": break
+
     if e == "search":
         query = v["search_bar"]
         mode = 0 if v["search_method"] == "Book name" else 1 if v["search_method"] == "Author" else 0
@@ -259,7 +257,7 @@ while True:
         wind.refresh()
         have_searched = True
         mangakatana.stop_search = False
-        searcher_thread = wind.perform_long_operation(lambda: mangakatana.mp_search(query, mode), "search_got_results")
+        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
 
     if e == "search_cancel":
         if searcher_thread is not None:
@@ -770,6 +768,6 @@ while True:
         wsettings = None
         
     if w == wind and e == "Help":
-        print("All of the free manga found on this app are hosted on third-party servers that are freely available to read online for all internet users. Any legal issues regarding the free manga should be taken up with the actual file hosts themselves, as we're not affiliated with them. Copyrights and trademarks for the manga, and other promotional materials are held by their respective owners and their use is allowed under the fair use clause of the Copyright Law.")
+        continue
 
 wind.close()

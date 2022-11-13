@@ -1,67 +1,37 @@
-CREATE TABLE books_cr (
+create table books (
     url text primary key,
-    
+    list text,
+
+    title text,
+    alt_names text,
+    cover blob,
+    author text,
+    genres text,
+    status text,
+    description text,
+
     chapter integer not null default 0,
     volume integer not null default 0,
-    
-    start_date text not null default "unknown",
-    end_date text not null default "unknown",
-    score text not null default "0",
-    last_update text not null default "unknown"
+    score integer not null default 0,
+    start_date integer not null default -1,
+    end_date integer not null default -1,
+    last_update integer not null default -1
 );
 
-CREATE TABLE books_cmpl (
-    url text primary key,
-    
-    chapter integer not null default 0,
-    volume integer not null default 0,
-    
-    start_date text not null default "unknown",
-    end_date text not null default "unknown",
-    score text not null default "0",
-    last_update text not null default "unknown"
+create table chapters (
+    book_url text,
+
+    chapter_index int,
+    chapter_url text primary key,
+    title text,
+    date int,
+
+    foreign key (book_url) references books(url) on delete cascade on update cascade
 );
 
-CREATE TABLE books_idle (
-    url text primary key,
-    
-    chapter integer not null default 0,
-    volume integer not null default 0,
-    
-    start_date text not null default "unknown",
-    end_date text not null default "unknown",
-    score text not null default "0",
-    last_update text not null default "unknown"
+create table pages (
+    chapter_url text,
+    page_index int,
+    data blob,
+    foreign key (chapter_url) references chapters(chapter_url) on delete cascade on update cascade
 );
-
-CREATE TABLE books_drop (
-    url text primary key,
-    
-    chapter integer not null default 0,
-    volume integer not null default 0,
-    
-    start_date text not null default "unknown",
-    end_date text not null default "unknown",
-    score text not null default "0",
-    last_update text not null default "unknown"
-);
-
-CREATE TABLE books_ptr (
-    url text primary key,
-    
-    chapter integer not null default 0,
-    volume integer not null default 0,
-    
-    start_date text not null default "unknown",
-    end_date text not null default "unknown",
-    score text not null default "0",
-    last_update text not null default "unknown"
-);
-
-CREATE TABLE history (
-    id int primary key,
-    time text not null,
-    event text not null,
-    related_book text,
-    
-)
