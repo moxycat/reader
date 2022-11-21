@@ -54,7 +54,7 @@ def init_db(password=None):
 
 books_schema = [
     (0, 'url', 'TEXT', 0, None, 1),
-    (1, 'list', 'TEXT', 1, '"books_ptr"', 0),
+    (1, 'list', 'TEXT', 1, '"books_ptr"', 0), # (1, 'list', 'TEXT', 0, None, 0),
     (2, 'title', 'TEXT', 0, None, 0),
     (3, 'alt_names', 'TEXT', 0, None, 0),
     (4, 'cover', 'BLOB', 0, None, 0),
@@ -309,6 +309,12 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
         book_info = dict(reversed(book_info.items()))
     current_order = order_by
 
+from datetime import timedelta
+
+def time_ago_formatter(diff: timedelta):
+    if diff.days > 0:
+        return "%s day%s ago" % (diff.days, "s" if diff.days > 1 else "")
+    else: return "<1 day ago"
 
 def make_treedata(order_by=OrderBy.UPLOAD):
     global thumbnails
@@ -331,13 +337,14 @@ def make_treedata(order_by=OrderBy.UPLOAD):
                 v["score"],
                 # chapter
                 "{}/{}".format(
-                    str(int(v["ch"]) + 1).zfill(2),
-                    str(len(v["info"]["chapters"])).zfill(2) if v["info"]["status"] == "Completed" else "[" + str(len(v["info"]["chapters"])).zfill(2) + "]"
+                    #str(int(v["ch"]) + 1).zfill(2),
+                    str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], int(v["ch"]))).zfill(2),
+                    str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2) if v["info"]["status"] == "Completed" else "[%s]" % str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2)
                 ),
                 # volumes read
                 v["vol"],
                 
-                str((datetime.now() - v["info"]["chapters"][-1]["date"]).days) + " days ago"
+                time_ago_formatter(datetime.now() - v["info"]["chapters"][-1]["date"])
             ],
             # thumbnail
             outbuf.getvalue(),

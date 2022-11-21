@@ -179,6 +179,7 @@ def search(query: str, search_by: int = 0) -> list:
     except: return []
     if resp.status_code != 200: return []
     soup = BeautifulSoup(resp.text, "lxml")
+    print(len(soup))
 
     nresults = soup.find("div", {"class": "widget-title"}).find("span").text.strip()
     if not nresults.startswith("Search"): nresults = 1
@@ -227,6 +228,44 @@ def search(query: str, search_by: int = 0) -> list:
             books = book_list.find_all("div", {"class": "item"})
     
     return results
+
+import requests_html
+
+def new_search(query:str, search_by:int, sesh:requests_html.HTMLSession, wind, _results:list[dict[str, str]] = [], _url=None):
+    if stop_search: return _results
+    query = quote_plus(query)
+    def fetcher(url):
+        response = sesh.get(url)
+        while len(response.text) == 0:
+            response = sesh.get(url)
+        return response
+    
+    if _url is None:
+        r = fetcher(f"https://mangakatana.com/?search={query}&search_by={'book_name' if search_by == 0 else 'author'}")
+        _results.clear()
+    else:
+        r = fetcher(_url)
+
+    # determine if page has only one book on it
+    if r.html.find("div#single_book", first=True) is not None:
+        url = r.html.find("meta[property=\"og:url\"]", first=True).attrs["content"]
+        title = r.html.find("h1.heading", first=True).text
+        _results.append({"title": title, "url": url})
+        return _results # single book pages are always last
+    
+    items: list[requests_html.Element] = r.html.find("div#book_list>div.item")
+    
+    for item in items:
+        anchor = item.find("h3.title", first=True).find("a", first=True)
+        url = anchor.attrs["href"]
+        title = anchor.text
+        _results.append({"title": title, "url": url})
+
+    next_page_anchor = r.html.find("a.next.page-numbers", first=True)
+    if next_page_anchor is not None:
+        wind.write_event_value("search_update_status", len(_results))
+        new_search(query, search_by, sesh, wind, _results, next_page_anchor.attrs["href"])
+    return _results
 
 def search_page_count(query: str, search_by: int = 0) -> int:
     query = quote_plus(query)
@@ -330,3 +369,10 @@ def download_images(urls: list[str]):
     with concurrent.futures.ThreadPoolExecutor() as pool:
         results = pool.map(fetch, urls)
     return list(results)
+
+def find_chapter_ordinal(chapter_urls: list, index: int):
+    n = 0
+    for i in range(0, index + 1):
+        m = re.search(r".*c[0-9]+(\.[1234]?)?$", chapter_urls[i])
+        if m is not None: n += 1
+    return n

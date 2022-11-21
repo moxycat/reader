@@ -4,4 +4,4 @@ bs4
 requests
 lxml
 requests_html
-sqlite3
+cx_freeze

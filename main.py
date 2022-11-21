@@ -14,6 +14,7 @@ import chapter_view, library, settings
 from reader import Reader
 from util import DEFAULT_COVER, popup_loading
 import authenticate
+from requests_html import HTMLSession
 
 tabtable = {
     "tab_reading": "lib_tree_cr",
@@ -121,6 +122,9 @@ if settings.settings["general"]["offline"]:
     wind["search_bar"].update(disabled=True)
     wind["search_cancel"].update(disabled=True)
     wind["search_method"].update(disabled=True)
+
+html_session = HTMLSession()
+html_session.browser
 
 reader = Reader() # temp reader used for info tx when browsing books
 readers = []
@@ -257,17 +261,22 @@ while True:
         wind.refresh()
         have_searched = True
         mangakatana.stop_search = False
-        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode), "search_got_results")
+        searcher_thread = wind.perform_long_operation(lambda: mangakatana.new_search(query, mode, html_session, wind), "search_got_results")
+
+    if e == "search_update_status":
+        wind["search_status"].update("Found %d results and counting..." % v[e])
+        wind.refresh()
 
     if e == "search_cancel":
         if searcher_thread is not None:
             wind["search_status"].update("Cancelling search...")
             mangakatana.stop_search = True
-            searcher_thread = None
 
     if e == "search_got_results":
         w["search_bar"].update(disabled=False)
         results = v[e]
+        searcher_thread = None
+        #print(results)
         if results is None:
             wind["search_status"].update("Search cancelled.")
             continue

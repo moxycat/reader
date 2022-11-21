@@ -1,1 +1,1 @@
-{"general": {"offline": false}, "ui": {"theme": "Light"}, "reader": {"w": "1400", "h": "900", "filter": "0"}, "server": {"source": "1"}, "storage": {"path": "C:/Users/marinlb/Downloads/reader-main (4)/reader-main/b2.db", "refresh": true}}
+{"general": {"offline": false}, "ui": {"theme": "Light"}, "reader": {"w": "1400", "h": "900", "filter": "0"}, "server": {"source": "1"}, "storage": {"path": "C:/Users/marinlb/Downloads/reader-main (4)/reader-main/b2.db", "refresh": false}}
