@@ -166,6 +166,15 @@ def refresh_ui(url: str, event: str):
         #wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), event)
         wind.perform_long_operation(lambda: library.update_info(url), event)
 
+def refresh_library_ui():
+    tds = library.make_treedata()
+    wreadlist["lib_tree_cr"].update(tds[0])
+    wreadlist["lib_tree_cmpl"].update(tds[1])
+    wreadlist["lib_tree_idle"].update(tds[2])
+    wreadlist["lib_tree_drop"].update(tds[3])
+    wreadlist["lib_tree_ptr"].update(tds[4])
+    wreadlist.refresh()
+
 while True:
     w, e, v = sg.read_all_windows()
     print(e)
@@ -355,11 +364,15 @@ while True:
     if e == "preview_book_list":
         dest = cats.index(v["preview_book_list"])
         library.move(reader.book_info["url"], dest=dest)
+        if wreadlist is not None:
+            refresh_library_ui()
     
     if e == "add_to_list":
         wind["add_to_list"].update(disabled=True)
         library.add(reader.book_info["url"], 0, 0, -1, -1, 0)
         refresh_ui(reader.book_info["url"], "book_list_got_info")
+        if wreadlist is not None:
+            refresh_library_ui()
         #wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
 
     if e == "details":
@@ -485,25 +498,14 @@ while True:
             library.update_userdata(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
             if wreadlist is not None:
                 print("updating entry...")
-                url = readers[-1].book_info["url"]
-                wreadlist[list2tree[rows[1]]].update(key=url, value=[
-                    textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
-                    library.book_info[url]["score"],
-                    "{}/{}".format(
-                        str(int(library.book_info[url]["ch"]) + 1).zfill(2),
-                        str(len(library.book_info[url]["info"]["chapters"])).zfill(2) if library.book_info[url]["info"]["status"] == "Completed" else "[" + str(len(library.book_info[url]["info"]["chapters"])).zfill(2) + "]"
-                    ),
-                    library.book_info[url]["vol"],
-                    str((datetime.now() - library.book_info[url]["info"]["chapters"][-1]["date"]).days) + " days ago"
-                ])
-                wreadlist.refresh()
+                refresh_library_ui()
         elif is_in_library:
             library.update_userdata(readers[-1].book_info["url"])
         elif not is_in_library:
             readers[-1].updated = library.start_reading()
             if readers[-1].updated:
                 library.add(readers[-1].book_info["url"], readers[-1].chapter_index, 0, int(time.time()), -1, 0, where=library.BookList.READING)
-                # update lib interface if open
+                refresh_library_ui()
         readers[-1].make_window()
         readers[-1].set_page(0)
         if reader.book_info["url"] == readers[-1].book_info["url"]:
