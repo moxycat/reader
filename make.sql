@@ -33,5 +33,15 @@ create table pages (
     chapter_url text,
     page_index int,
     data blob,
+    primary key (chapter_url, page_index),
     foreign key (chapter_url) references chapters(chapter_url) on delete cascade on update cascade
+);
+
+create table opened_chapters (
+    book_url text,
+    chapter_url text primary key,
+    autodownload int,
+    page_index int,
+    foreign key (chapter_url) references chapters(chapter_url) on delete cascade on update cascade,
+    foreign key (book_url) REFERENCES books(url) on delete cascade on update cascade
 );

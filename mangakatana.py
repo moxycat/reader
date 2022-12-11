@@ -231,39 +231,54 @@ def search(query: str, search_by: int = 0) -> list:
 
 import requests_html
 
-def new_search(query:str, search_by:int, sesh:requests_html.HTMLSession, wind, _results:list[dict[str, str]] = [], _url=None):
+def new_search(
+    query:str, search_by:int, sesh:requests_html.HTMLSession,
+    wind, _results:list[dict[str, str]] = [], _url=None):
+    # stop if searching is manually cancelled by the user
     if stop_search: return _results
+    # sanitize query string
     query = quote_plus(query)
+
     def fetcher(url):
         response = sesh.get(url)
         while len(response.text) == 0:
             response = sesh.get(url)
         return response
     
+    # _url is None only on the first iteration of the function, thus we setup everyting here
     if _url is None:
-        r = fetcher(f"https://mangakatana.com/?search={query}&search_by={'book_name' if search_by == 0 else 'author'}")
+        r = fetcher(
+            f"""https://mangakatana.com/?search={query}&search_by={
+                'book_name' if search_by == 0 else 'author'}""")
         _results.clear()
     else:
         r = fetcher(_url)
 
     # determine if page has only one book on it
     if r.html.find("div#single_book", first=True) is not None:
-        url = r.html.find("meta[property=\"og:url\"]", first=True).attrs["content"]
-        title = r.html.find("h1.heading", first=True).text
-        _results.append({"title": title, "url": url})
-        return _results # single book pages are always last
+        url = r.html.find("meta[property=\"og:url\"]", first=True).attrs["content"] # grab url
+        title = r.html.find("h1.heading", first=True).text # grab title
+        _results.append({"title": title, "url": url}) # add to results
+        return _results # single book pages are always last so we can exit early
     
+    # all books are found in the div with id "book_list" with each book being in its own div with a class "item"
     items: list[requests_html.Element] = r.html.find("div#book_list>div.item")
     
+    # iterate all books
     for item in items:
+        # grab the anchor that contains the url to the book and it's title
         anchor = item.find("h3.title", first=True).find("a", first=True)
-        url = anchor.attrs["href"]
-        title = anchor.text
-        _results.append({"title": title, "url": url})
+        url = anchor.attrs["href"] # grab the url
+        title = anchor.text # grab the text
+        _results.append({"title": title, "url": url}) # add to results
 
+    # find the next page button
     next_page_anchor = r.html.find("a.next.page-numbers", first=True)
+    # if it exists we call the search function on it otherwise return current results
     if next_page_anchor is not None:
+        # write to window (signify search progress)
         wind.write_event_value("search_update_status", len(_results))
+        # call search function recursively
         new_search(query, search_by, sesh, wind, _results, next_page_anchor.attrs["href"])
     return _results
 

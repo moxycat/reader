@@ -2,6 +2,7 @@ import PySimpleGUI as sg
 from io import BytesIO
 from PIL import Image
 from requests_html import HTMLSession
+import os
 
 import mangakatana
 import settings
@@ -25,6 +26,8 @@ class Reader:
     hscroll: float = 0 # horizontal scroll position
     zoom_level: float = 1.0 # ...
     zoom_lock: bool = False
+    downloading: bool = False
+    zoom_to_fit: bool = False
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info.copy()
@@ -64,22 +67,32 @@ class Reader:
     # use perform_long_operation with this one or the UI will hang
     def set_chapter(self, chapter_index: int =-1):
         if chapter_index != -1: self.chapter_index = chapter_index
+        self.downloading = True
+
+        chapter_url = self.book_info["chapters"][chapter_index]["url"]
         
-        self.images.clear()
-        self.images = library.get_pages(self.book_info["chapters"][chapter_index]["url"])
-        if self.images != []:
+        images = library.get_pages(chapter_url)
+        if images != []:
+            self.images.clear()
+            self.images = images
             self.max_page_index = len(self.images) - 1
+            self.downloading = False
             return True
 
-        ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(self.book_info["chapters"][self.chapter_index]["url"], self.html_session))
+        ttr = ThreadThatReturns(target=mangakatana.get_manga_chapter_images, args=(chapter_url, self.html_session))
         ttr.start()
         image_urls = ttr.join()
         if None in image_urls: return False
-        self.images = mangakatana.download_images(image_urls)
-        if None in self.images: return False
+        images = mangakatana.download_images(image_urls)
+        if None in images: return False
         if int(settings.settings["reader"]["filter"]) > 0:
-            self.images = bluefilter.bulk_bluefilter(self.images, int(settings.settings["reader"]["filter"]))
+            images = bluefilter.bulk_bluefilter(images, int(settings.settings["reader"]["filter"]))
+        self.images.clear()
+        self.images = images
         self.max_page_index = len(self.images) - 1
+        self.downloading = False
+        if self.window is not None:
+            library.set_pages(chapter_url, None, self.images)
         return True
 
     def check_if_mini(self, event):
@@ -101,19 +114,33 @@ class Reader:
         outbuf = BytesIO()
         im.save(outbuf, "png")
         self.refresh(outbuf.getvalue())
+    
+    # resize an image to fit the dimensions of the current window size (keeps AR)
+    def zoom_fit(self, image: bytes):
+        im = im = Image.open(BytesIO(image))
+        ww, wh = self.window.size
+        print(ww, wh)
+        ww -= 45
+        wh -= 105 if settings.settings["ui"]["theme"] == "Light" else 107
+        print(ww, wh)
+        im.thumbnail((ww, wh), Image.BICUBIC)
+        outbuf = BytesIO()
+        im.save(outbuf, "png")
+        return outbuf.getvalue()
 
     def make_window(self):
         layout = [
-            [sg.Menu([["&Tools", ["&Save screenshot"]]], key="reader_menu")],
+            [sg.Menu([["&Tools", ["Save &screenshot", "Save &chapter"]]], key="reader_menu")],
             [sg.Column([
-                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Button("Cache next ch.", key="reader_cache", pad=0)]
+                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Button("Fit", key="reader_zoom_fit", pad=0), sg.Button("Cache next ch.", key="reader_cache", pad=0)]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
             [sg.HSeparator()],
             [
                 [
                     sg.Column([
                         [sg.Image(key="reader_page_img", enable_events=False, pad=0)]
-                    ], size=(int(settings.settings["reader"]["w"]), int(settings.settings["reader"]["h"])), scrollable=True, key="reader_page_img_col", element_justification="c", justification="c", vertical_alignment="c")
+                    ], size=(int(settings.settings["reader"]["w"]), int(settings.settings["reader"]["h"])), scrollable=True, key="reader_page_img_col", element_justification="c",
+                    background_color="white")
                 ],
                 [sg.HSeparator()],
                 [
@@ -151,8 +178,8 @@ class Reader:
         self.window.TKroot.bind("<Home>", lambda _: self.set_hscroll(0.0))
         self.window.TKroot.bind("<End>", lambda _: self.set_hscroll(1.0))
 
-        self.window["reader_page_img"].bind("<Button-1>", "_reader_go_back")
-        self.window["reader_page_img"].bind("<Button-3>", "_reader_go_fwd")
+        self.window["reader_page_img"].bind("<Button-3>", "_reader_go_back")
+        self.window["reader_page_img"].bind("<Button-1>", "_reader_go_fwd")
         #self.window["reader_page_img"].bind("<Double-Button-1>", "_reader_go_home")
         #self.window["reader_page_img"].bind("<Double-Button-3>","_reader_go_end")
     
@@ -172,25 +199,25 @@ class Reader:
         self.window["reader_go_prev_ch"].update(disabled=settings.settings["general"]["offline"])
         if self.chapter_index - 1 >= 0 and self.book_info["chapters"][self.chapter_index - 1]["url"] in library.get_downloaded_chapters():
             self.window["reader_go_prev_ch"].update(disabled=False)
-        self.window["reader_go_prev_ch"].update(disabled=self.chapter_index == 0)
+        self.window["reader_go_prev_ch"].update(disabled=self.downloading or (self.chapter_index == 0))
 
-
-        a = (self.chapter_index == self.max_chapter_index) or not (self.chapter_index + 1 <= self.max_chapter_index and self.book_info["chapters"][self.chapter_index + 1]["url"] in library.get_downloaded_chapters())    
         self.window["reader_go_next_ch"].update(disabled=settings.settings["general"]["offline"])
         if self.chapter_index + 1 <= self.max_chapter_index and self.book_info["chapters"][self.chapter_index + 1]["url"] in library.get_downloaded_chapters():
             self.window["reader_go_next_ch"].update(disabled=False)
-        self.window["reader_go_next_ch"].update(disabled=self.chapter_index == self.max_chapter_index)
+        self.window["reader_go_next_ch"].update(disabled=self.downloading or (self.chapter_index == self.max_chapter_index))
+
         self.window["reader_go_back"].update(disabled=self.page_index == 0)
         self.window["reader_go_fwd"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_end"].update(disabled=self.page_index == self.max_page_index)
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
-        self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"])
-        #self.window["reader_cache"].update(disabled=self.chapter_index == self.max_chapter_index)
-        self.window["reader_cache"].update(disabled=self.cache != [] or self.chapter_index == self.max_chapter_index)
+        self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"] or (self.cache != [] or self.chapter_index == self.max_chapter_index))
         
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
-        self.window["reader_page_img"].update(data=self.images[self.page_index])
+        if self.zoom_to_fit:
+            self.window["reader_page_img"].update(data=self.zoom_fit(self.images[self.page_index]))
+        else:
+            self.window["reader_page_img"].update(data=self.images[self.page_index])
         self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
         self.window.refresh()
         self.window["reader_page_img_col"].contents_changed()
@@ -199,6 +226,7 @@ class Reader:
         im = Image.open(BytesIO(self.images[self.page_index]))
         print(im.width, im.height)
         self.window.TKroot.maxsize(im.width + 45, im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107))
+        self.window.TKroot.minsize((im.width + 45) // 2, (im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107)) // 2)
         #self.window.TKroot.minsize((im.width + 45) // 2, (im.height + 70) // 2)
         im.close()
 
@@ -249,7 +277,12 @@ class Reader:
 
     def next_chapter(self) -> None:
         if self.chapter_index + 1 > self.max_chapter_index: return
+        url = self.book_info["chapters"][self.chapter_index]["url"]
+        library.unsetas_opened(url)
         self.chapter_index += 1
+        url = self.book_info["chapters"][self.chapter_index]["url"]
+        autodownload = url not in library.get_downloaded_chapters()
+        library.setas_opened(self.book_info["url"], url, autodownload)
         self.window["reader_go_next_ch"].update(disabled=True)
         self.window["reader_go_prev_ch"].update(disabled=True)
         if self.cache == []:
@@ -262,7 +295,12 @@ class Reader:
     
     def prev_chapter(self):
         if self.chapter_index - 1 < 0: return
+        url = self.book_info["chapters"][self.chapter_index]["url"]
+        library.unsetas_opened(url)
         self.chapter_index -= 1
+        url = self.book_info["chapters"][self.chapter_index]["url"]
+        autodownload = url not in library.get_downloaded_chapters()
+        library.setas_opened(self.book_info["url"], url, autodownload)
         self.window["reader_go_next_ch"].update(disabled=True)
         self.window["reader_go_prev_ch"].update(disabled=True)
         self.window.perform_long_operation(lambda: self.set_chapter(self.chapter_index), "reader_loaded_chapter")
@@ -272,13 +310,12 @@ class Reader:
         self.zoom_level += d
         self.zoom()
 
-
     def jump(self):
         layout = [
             [sg.Input(key="npage", size=(10, 1))],
-            [sg.Button("Jump", key="jump"), sg.Button("Cancel", key="cancel")]
+            [sg.Button("Jump", key="jump", bind_return_key=True), sg.Button("Cancel", key="cancel")]
         ]
-        w = sg.Window("Jump to page", layout, element_justification="c", modal=True)
+        w = sg.Window("Jump to page", layout, element_justification="c", modal=True, disable_minimize=True)
         val = None
         while True:
             e, v = w.read()
@@ -311,8 +348,6 @@ class Reader:
         if event == "reader_scroll_up": self.inc_vscroll(-0.01)
         if event == "reader_resized": self.resized()
         if event == "reader_loaded_chapter":
-            #self.window["reader_go_next_ch"].update(disabled=False)
-            #self.window["reader_go_prev_ch"].update(disabled=False)
             self.window["reader_cache"].update(disabled=False)
             self.set_page(0)
             self.refresh()
@@ -325,3 +360,25 @@ class Reader:
                 self.window.perform_long_operation(lambda: self.cache_chapter(self.chapter_index + 1), "reader_cached_next")
         if event == "reader_cached_next":
             self.window["reader_cache"].update("cached.")
+        
+        if event == "Save screenshot":
+            files = os.listdir()
+            defpath = f"{self.page_index + 1}.png"
+            n = 1
+            while defpath in files:
+                defpath = f"{self.page_index + 1}_{n}.png"
+                n += 1
+            filename = sg.popup_get_file(message="Please choose where to save the file", title="Save screenshot",
+            default_extension="png", file_types=(("Image", "*.png png"),), save_as=True,
+            default_path=defpath)
+            if filename is None: return
+            im = Image.open(BytesIO(self.images[self.page_index]))
+            im.save(filename, "png")
+            im.close()
+        
+        if event == "Save chapter":
+            library.save_opened(self.book_info["chapters"][self.chapter_index]["url"])
+        
+        if event == "reader_zoom_fit":
+            self.zoom_to_fit = not self.zoom_to_fit
+            self.refresh()

@@ -1,7 +1,5 @@
-from msilib import schema
 import textwrap
 import PySimpleGUI as sg
-#import sqlite3 as sql
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
@@ -14,24 +12,7 @@ import sqlite3 as sql
 from concurrent.futures import ThreadPoolExecutor
 
 import mangakatana, settings
-from util import TreeRtClick, DEFAULT_COVER
-
-tables = ["books_cr", "books_cmpl", "books_idle", "books_drop", "books_ptr"]
-
-class BookList():
-    READING = 0
-    COMPLETED = 1
-    ON_HOLD = 2
-    DROPPED = 3
-    PLAN_TO_READ = 4
-
-class OrderBy():
-    UPLOAD = 0,
-    UPDATE = 1,
-    TITLE = 2,
-    SCORE = 3,
-    CHAPTERS = 4,
-    VOLUMES = 5,
+from util import TreeRtClick, tables, OrderBy, BookList
 
 conn: sql.Connection = None
 book_info = {}
@@ -54,7 +35,7 @@ def init_db(password=None):
 
 books_schema = [
     (0, 'url', 'TEXT', 0, None, 1),
-    (1, 'list', 'TEXT', 1, '"books_ptr"', 0), # (1, 'list', 'TEXT', 0, None, 0),
+    (1, 'list', 'TEXT', 0, None, 0),
     (2, 'title', 'TEXT', 0, None, 0),
     (3, 'alt_names', 'TEXT', 0, None, 0),
     (4, 'cover', 'BLOB', 0, None, 0),
@@ -77,22 +58,32 @@ chapters_schema = [
     (4, 'date', 'INT', 0, None, 0)
 ]
 pages_schema = [
-    (0, 'chapter_url', 'TEXT', 0, None, 0),
-    (1, 'page_index', 'INT', 0, None, 0),
+    (0, 'chapter_url', 'TEXT', 0, None, 1),
+    (1, 'page_index', 'INT', 0, None, 2),
     (2, 'data', 'BLOB', 0, None, 0)
 ]
 
+opened_chapters_schema = [
+    (0, 'book_url', 'TEXT', 0, None, 0),
+    (1, 'chapter_url', 'TEXT', 0, None, 1),
+    (2, 'autodownload', 'INT', 0, None, 0),
+    (3, 'page_index', 'INT', 0, None, 0)
+] # add page saving, you'll need to redact the *_opened functions to accomodate and then use set_page on reader obj
+
 def verify_schema():
     cur = conn.cursor()
-    cur.execute("SELECT name FROM sqlite_master WHERE type=\"table\" ORDER BY name")
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     names = cur.fetchall()
     names = [x[0] for x in names]
-    if names != ["books", "chapters", "pages"]: return False
-    schemas = [books_schema, chapters_schema, pages_schema]
+    print(names)
+    if names != ["books", "chapters", "opened_chapters", "pages"]: return False
+    schemas = [books_schema, chapters_schema, opened_chapters_schema, pages_schema]
     for i, name in enumerate(names):
         cur.execute(f"PRAGMA TABLE_INFO({name})")
         rows = cur.fetchall()
+        print(rows)
         if rows != schemas[i]: return False
+        print("yay")
     return True
 
 def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
@@ -208,10 +199,11 @@ def get_book_info(url: str):
         "chapters": chapters
         }
 
-def set_pages(chapter_url: str, session):
+def set_pages(chapter_url: str, session, images=None):
     cur = conn.cursor()
-    image_urls = mangakatana.get_manga_chapter_images(chapter_url, session)
-    images = mangakatana.download_images(image_urls)
+    if images is None:
+        image_urls = mangakatana.get_manga_chapter_images(chapter_url, session)
+        images = mangakatana.download_images(image_urls)
 
     for image in images:
         im = Image.open(BytesIO(image))
@@ -252,6 +244,45 @@ def get_downloaded_chapters():
     rows = cur.fetchall()
     cur.close()
     return [row[0] for row in rows]
+
+def setas_opened(book_url, chapter_url, autodownload:bool=False):
+    print(book_url, chapter_url, autodownload)
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    if len(cur.fetchall()) > 0:
+        cur.close()
+        return
+    cur.execute("INSERT INTO opened_chapters VALUES(?, ?, ?, 0)", (book_url, chapter_url, int(autodownload)))
+    cur.close()
+    conn.commit()
+
+def unsetas_opened(chapter_url):
+    print(chapter_url)
+    cur = conn.cursor()
+    cur.execute("SELECT autodownload FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    row = cur.fetchone()
+    autodownload = bool(row[0])
+    cur.execute("DELETE FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    cur.close()
+    conn.commit()
+    if autodownload:
+        delete_pages(chapter_url)
+
+def get_opened(only_chapters=False):
+    cur = conn.cursor()
+    cur.execute("SELECT book_url, chapter_url FROM opened_chapters")
+    rows = cur.fetchall()
+    cur.close()
+    if only_chapters:
+        return [row[1] for row in rows]
+    else:
+        return [(row[0], row[1]) for row in rows]
+
+def save_opened(chapter_url):
+    cur = conn.cursor()
+    cur.execute("UPDATE opened_chapters SET autodownload=0 WHERE chapter_url=?", (chapter_url,))
+    cur.close()
+    conn.commit()
 
 # full refresh means all book info will be fetched from server first otherwise it'll just be read as-is from the database
 def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
@@ -414,7 +445,7 @@ def make_window():
 
     layout = [
         [
-            sg.Menu([["Library", ["&Refresh", "&Check for updates", "&Sort by", ["&Title::title", "&Score::score", "&Chapters::chapters", "&Volumes::volumes", "Latest up&load::upload", "Last up&date::update"]]]], key="lib_menu")
+            sg.Menu([["Library", ["&Refresh", ("!" if settings.settings["general"]["offline"] else "") + "&Check for updates", "&Sort by", ["&Title::title", "&Score::score", "&Chapters::chapters", "&Volumes::volumes", "Latest up&load::upload", "Last up&date::update"]]]], key="lib_menu")
         ],
         [
             sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
