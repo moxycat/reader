@@ -45,3 +45,16 @@ create table opened_chapters (
     foreign key (chapter_url) references chapters(chapter_url) on delete cascade on update cascade,
     foreign key (book_url) REFERENCES books(url) on delete cascade on update cascade
 );
+
+create table users (
+    username text primary key,
+    password text
+);
+
+create table users_books (
+    user_id text,
+    book_url text,
+    primary key(user_id, book_url),
+    foreign key(user_id) references users(username),
+    foreign key(book_url) references books(url)
+);

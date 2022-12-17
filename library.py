@@ -7,8 +7,11 @@ import re
 import base64
 import time
 import json
-#from sqlcipher3 import dbapi2 as sql
-import sqlite3 as sql
+import config
+if config.enable_sqlcipher:
+    from sqlcipher3 import dbapi2 as sql
+else:
+    import sqlite3 as sql
 from concurrent.futures import ThreadPoolExecutor
 
 import mangakatana, settings
@@ -177,7 +180,9 @@ def get_book_info(url: str):
     cur = conn.cursor()
     cur.execute("SELECT * FROM books WHERE url=?", (url,))
     rows = cur.fetchall()
-    if rows == []: return {}
+    if rows == []:
+        if not settings.settings["general"]["offline"]: return mangakatana.get_manga_info(url)
+        else: return {}
     row = rows[0]
     chapters = []
 
