@@ -20,15 +20,15 @@ list2tree = {
 
 cats = ["Reading", "Completed", "On-hold", "Dropped", "Plan to read"]
 list2cat = {"books_cr": "Reading", "books_cmpl": "Completed", "books_idle": "On-hold", "books_drop": "Dropped", "books_ptr": "Plan to read"}
-
+lists = ["Reading", "Completed", "On-hold", "Dropped", "Plan to read"]
 tables = ["books_cr", "books_cmpl", "books_idle", "books_drop", "books_ptr"]
 
 class BookList():
-    READING = 0
-    COMPLETED = 1
-    ON_HOLD = 2
-    DROPPED = 3
-    PLAN_TO_READ = 4
+    READING = 1
+    COMPLETED = 2
+    ON_HOLD = 3
+    DROPPED = 5
+    PLAN_TO_READ = 5
 
 class OrderBy():
     UPLOAD = 0,

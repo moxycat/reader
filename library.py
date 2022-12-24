@@ -4,7 +4,7 @@ from io import BytesIO
 from PIL import Image
 from datetime import datetime
 import re
-import base64
+import hashlib
 import time
 import json
 import config
@@ -23,6 +23,9 @@ thumbnails = []
 current_order = OrderBy.UPLOAD
 
 deletes = 0
+
+username: str = None
+password: str = None
 
 def init_db(password=None):
     global conn, cur
@@ -73,6 +76,35 @@ opened_chapters_schema = [
     (3, 'page_index', 'INT', 0, None, 0)
 ] # add page saving, you'll need to redact the *_opened functions to accomodate and then use set_page on reader obj
 
+def sha384(s: str) -> str:
+    return hashlib.sha384(s.encode("utf-8")).hexdigest()
+
+def login(u: str, p: str):
+    global username, password
+    digest = sha384(p)
+    cur = conn.cursor()
+    rows = cur.execute("SELECT * FROM users WHERE username=? AND password=?", (u, digest))
+    result = len(rows.fetchall()) > 0
+    cur.close()
+    if result: username = u
+    return result
+
+def register(u: str, p: str):
+    global username
+    digest = sha384(p)
+    cur = conn.cursor()
+    # check if user already exists
+    rows = cur.execute("SELECT * FROM users WHERE username=?", (u,))
+    if len(rows.fetchall()) > 0: return False
+    cur.execute("INSERT INTO users VALUES (?, ?)", (u, digest))
+    conn.commit()
+    cur.close()
+    username = u
+    return True
+
+def update_user(old_username: str, old_password: str, new_username: str | None=None, new_password: str | None=None):
+    pass
+
 def verify_schema():
     cur = conn.cursor()
     cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
@@ -91,34 +123,40 @@ def verify_schema():
 
 def add(url, ch=0, vol=0, sd=-1, ed=-1, score=0, /, where=BookList.PLAN_TO_READ, last_update=None):
     if last_update is None: last_update = int(time.time())
-    query = "INSERT INTO books (url, list, chapter, volume, score, start_date, end_date, last_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+    query = "INSERT INTO user_books (user, book_url, list, chapter, volume, score, start_date, end_date, last_update) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     cur = conn.cursor()
-    cur.execute(query, (url, tables[where], ch, vol, score, sd, ed, last_update))
+    cur.execute(query, (username, url, where, ch, vol, score, sd, ed, last_update))
+    cur.execute("INSERT OR IGNORE INTO books (url) VALUES (?)", (url,))
     conn.commit()
     cur.close()
     update_info(url)
-    refresh_book_info()
+    #refresh_book_info()
 
 # fetch fresh information about a book
 def update_info(url: str):
     info = mangakatana.get_manga_info(url)
     cover = mangakatana.fetch(info["cover_url"])
-    cover = base64.b64encode(cover)
     info["cover"] = cover
-    is_in_library, _ = get_book(url)
-    if not is_in_library: return info
+    if get_book_userinfo(url) is None: return info
     
-    query = "UPDATE books SET title=?, alt_names=?, author=?, genres=?, status=?, description=?, cover=? WHERE url=?"    
+    query = "UPDATE books SET title=?, alt_names=?, cover=?, status=?, description=? WHERE url=?"    
     cur = conn.cursor()
-    cur.execute(query, (info["title"], json.dumps(info["alt_names"]), info["author"], json.dumps(info["genres"]), info["status"], info["description"], cover, url))
+    cur.execute(query, (info["title"], json.dumps(info["alt_names"]), cover, info["status"], info["description"], url))
     
+    # now add author and genres
+    cur.execute("INSERT OR IGNORE INTO authors VALUES (?)", (info["author"],))
+    cur.execute("INSERT OR IGNORE INTO book_author VALUES (?, ?)", (url, info["author"]))
+
+    cur.executemany("INSERT OR IGNORE INTO genres VALUES (?)", [(genre,) for genre in info["genres"]])
+    cur.executemany("INSERT OR IGNORE INTO book_genre VALUES (?, ?)", [(url, genre) for genre in info["genres"]])
+
     # update chapters
     for chapter in info["chapters"]:
-        cur.execute("INSERT OR REPLACE INTO chapters VALUES (?, ?, ?, ?, ?)", (url, chapter["index"], chapter["url"], chapter["name"], time.mktime(chapter["date"].timetuple())))
+        cur.execute("INSERT OR REPLACE INTO chapters VALUES (?, ?, ?, ?, ?)", (chapter["url"], url, chapter["index"], chapter["name"], time.mktime(chapter["date"].timetuple())))
     
     conn.commit()
     cur.close()
-    refresh_book_info()
+    #refresh_book_info()
     
     return info
 
@@ -129,8 +167,8 @@ def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_u
     vals = []
     for arg in args:
         if arg[0] is not None: vals.append(arg[1] + "=?")
-    query = "UPDATE books SET " + ",".join(vals) + f" WHERE url='{url}'"
-    tup = tuple(filter(lambda x: x is not None, [x[0] for x in args]))
+    query = "UPDATE user_books SET " + ",".join(vals) + " WHERE book_url=? AND user=?"
+    tup = tuple(filter(lambda x: x is not None, [x[0] for x in args] + [url, username]))
     print(query, tup)
     cur = conn.cursor()
     cur.execute(query, tup)
@@ -141,7 +179,24 @@ def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_u
 def delete(url: str):
     global deletes
     cur = conn.cursor()
+
+    # check how many users have this book in their libraries,
+    # if > 1 delete the book only from user_books table
+    # for the user that requested the deletion.
+    cur.execute("SELECT user FROM user_books WHERE book_url=?", (url,))
+    remove_everywhere = len(cur.fetchall()) == 1
+    if not remove_everywhere:
+        cur.execute("DELETE FROM user_books WHERE book_url=? AND user=?", (url, username))
+        conn.commit()
+        cur.close()
+        deletes += 1
+        return
+
+    cur.execute("DELETE FROM user_books WHERE book_url=?", (url,))
     cur.execute("DELETE FROM books WHERE url=?", (url,))
+    cur.execute("DELETE FROM book_author WHERE book_url=?", (url,))
+    cur.execute("DELETE FROM book_genre WHERE book_url=?", (url,))
+    conn.commit()
     cur.execute("SELECT * FROM chapters WHERE book_url=?", (url,))
     rows = cur.fetchall()
     for row in rows:
@@ -156,16 +211,18 @@ def delete(url: str):
 
 def move(url: str, /, dest: BookList):
     cur = conn.cursor()
-    cur.execute("UPDATE books SET list=? WHERE url=?", (tables[dest], url))
+    cur.execute("UPDATE user_books SET list=? WHERE book_url=? AND user=?", (dest, url, username))
     conn.commit()
     cur.close()
     refresh_book_info()
 
 def cleanup_and_close():
-    if deletes == 0: return
+    if deletes == 0:
+        conn.close()
+        return
     conn.execute("VACUUM")
     conn.close()
-
+# deprecate to use get_book_userinfo
 def get_book(url: str) -> tuple[bool, None | list]:
     cur = conn.cursor()
     query = "SELECT * FROM books WHERE url=?"
@@ -175,8 +232,26 @@ def get_book(url: str) -> tuple[bool, None | list]:
     if len(rows) > 1 or len(rows) == 0: return (False, None)
     return (True, rows[0])
 
+def get_book_userinfo(url: str):
+    #refresh_book_info()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM user_books WHERE book_url=? AND user=?", (url, username))
+    rows = cur.fetchall()
+    if len(rows) == 0: return None
+    row = rows[0]
+    return {
+        "list": row[2],
+        "ch": row[3],
+        "vol": row[4],
+        "score": row[5],
+        "start_date": row[6],
+        "end_date": row[7],
+        "last_update": row[8]
+    }
+
+
 def get_book_info(url: str):
-    refresh_book_info()
+    #refresh_book_info()
     cur = conn.cursor()
     cur.execute("SELECT * FROM books WHERE url=?", (url,))
     rows = cur.fetchall()
@@ -186,23 +261,38 @@ def get_book_info(url: str):
     row = rows[0]
     chapters = []
 
+    status = row[4]
+    if status == 1: status = "Completed"
+    elif status == 2: status = "Ongoing"
+    else: status = "Other"
+
+    info = {
+        "url": row[0],
+        "cover_url": "",
+        "cover": row[3],
+        "title": row[1],
+        "alt_names": json.loads(row[2]),
+        "status": status,
+        "description": row[5]}
+    
+    print(info.keys())
+
     cur.execute("SELECT * FROM chapters WHERE book_url=? ORDER BY chapter_index ASC", (url,))
     chapter_rows = cur.fetchall()
     for chapter_row in chapter_rows:
-        chapters.append({"index": chapter_row[1], "name": chapter_row[3], "url": chapter_row[2], "date": datetime.fromtimestamp(chapter_row[4])})
+        chapters.append({"index": chapter_row[2], "name": chapter_row[3], "url": chapter_row[0], "date": datetime.fromtimestamp(chapter_row[4])})
 
-    return {
-        "url": row[0],
-        "cover_url": "",
-        "cover": row[4],
-        "title": row[2],
-        "alt_names": json.loads(row[3]),
-        "author": row[5],
-        "genres": json.loads(row[6]),
-        "status": row[7],
-        "description": row[8],
-        "chapters": chapters
-        }
+    info["chapters"] = chapters
+
+    cur.execute("SELECT author FROM book_author WHERE book_url=?", (url,))
+    authors = [r[0] for r in cur.fetchall()]
+    cur.execute("SELECT genre from book_genre WHERE book_url=?", (url,))
+    genres = [r[0] for r in cur.fetchall()]
+
+    info["author"] = authors
+    info["genres"] = genres
+
+    return info
 
 def set_pages(chapter_url: str, session, images=None):
     cur = conn.cursor()
@@ -253,21 +343,21 @@ def get_downloaded_chapters():
 def setas_opened(book_url, chapter_url, autodownload:bool=False):
     print(book_url, chapter_url, autodownload)
     cur = conn.cursor()
-    cur.execute("SELECT * FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    cur.execute("SELECT * FROM opened_chapters WHERE chapter_url=? AND user=?", (chapter_url, username))
     if len(cur.fetchall()) > 0:
         cur.close()
         return
-    cur.execute("INSERT INTO opened_chapters VALUES(?, ?, ?, 0)", (book_url, chapter_url, int(autodownload)))
+    cur.execute("INSERT INTO opened_chapters VALUES(?, ?, ?, 0)", (username, chapter_url, int(autodownload)))
     cur.close()
     conn.commit()
 
 def unsetas_opened(chapter_url):
     print(chapter_url)
     cur = conn.cursor()
-    cur.execute("SELECT autodownload FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    cur.execute("SELECT autodownload FROM opened_chapters WHERE chapter_url=? AND user=?", (chapter_url, username))
     row = cur.fetchone()
     autodownload = bool(row[0])
-    cur.execute("DELETE FROM opened_chapters WHERE chapter_url=?", (chapter_url,))
+    cur.execute("DELETE FROM opened_chapters WHERE chapter_url=? AND user=?", (chapter_url, username))
     cur.close()
     conn.commit()
     if autodownload:
@@ -275,17 +365,29 @@ def unsetas_opened(chapter_url):
 
 def get_opened(only_chapters=False):
     cur = conn.cursor()
-    cur.execute("SELECT book_url, chapter_url FROM opened_chapters")
+    cur.execute("SELECT chapter_url, page FROM opened_chapters WHERE user=?", (username,))
     rows = cur.fetchall()
-    cur.close()
-    if only_chapters:
-        return [row[1] for row in rows]
-    else:
-        return [(row[0], row[1]) for row in rows]
+    chapter_urls = [row[0] for row in rows]
+    pages = [row[1] for row in rows]
+    if only_chapters: return chapter_urls
+    book_urls = []
+    for chapter_url in chapter_urls:
+        cur.execute("SELECT book_url FROM chapters WHERE chapter_url=?", (chapter_url,))
+        rows = cur.fetchall()
+        book_urls.extend([row[0] for row in rows])
+    #print(book_urls, chapter_urls)
+    return list(zip(book_urls, chapter_urls, pages))
 
 def save_opened(chapter_url):
     cur = conn.cursor()
-    cur.execute("UPDATE opened_chapters SET autodownload=0 WHERE chapter_url=?", (chapter_url,))
+    cur.execute("UPDATE opened_chapters SET autodownload=0 WHERE chapter_url=? AND user=?", (chapter_url, username))
+    cur.close()
+    conn.commit()
+
+def save_current_pages(readers):
+    cur = conn.cursor()
+    xs = [(r.page_index, r.book_info["chapters"][r.chapter_index]["url"], username) for r in readers]
+    cur.executemany("UPDATE opened_chapters SET page=? WHERE chapter_url=? AND user=?", xs)
     cur.close()
     conn.commit()
 
@@ -294,37 +396,22 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
     global book_info, current_order
     book_info.clear()
     cur = conn.cursor()
-    query = "SELECT * FROM books"
-    cur.execute(query)
+    query = "SELECT * FROM user_books WHERE user=?"
+    cur.execute(query, (username,))
     rows = cur.fetchall()
     if full:
-        urls = [row[0] for row in rows]
+        urls = [row[1] for row in rows]
         with ThreadPoolExecutor() as pool:
             pool.map(update_info, urls)
         refresh_book_info(full=False)
         cur.close()
         return
     for row in rows:
-        url = row[0]
-        # get chapters
-        cur.execute("SELECT * FROM chapters WHERE book_url=? ORDER BY chapter_index ASC", (url,))
-        chapter_rows = cur.fetchall()
-        chapters = []
-        for i, chapter_row in enumerate(chapter_rows):
-            chapters.append({"index": i, "name": chapter_row[3], "url": chapter_row[2], "date": datetime.utcfromtimestamp(chapter_row[4])})
-        #chapters.reverse()
-        info = {
-            "url": url,
-            "title": row[2],
-            "alt_names": row[3],
-            "cover": row[4],
-            "author": row[5],
-            "genres": row[6],
-            "status": row[7],
-            "description": row[8],
-            "chapters": chapters
-        }
-        book_info.setdefault(url, {"ch": row[9], "vol": row[10], "score": row[11], "start_date": row[12], "end_date": row[13], "last_update": row[14], "info": info, "list": row[1]})
+        url = row[1]
+        
+        info = get_book_info(url)
+        print(info.keys())
+        book_info.setdefault(url, {"ch": row[3], "vol": row[4], "score": row[5], "start_date": row[6], "end_date": row[7], "last_update": row[8], "info": info, "list": row[2]})
     cur.close()
 
     match order_by:
@@ -359,10 +446,11 @@ def make_treedata(order_by=OrderBy.UPLOAD):
 
     for i, (k, v) in enumerate(book_info.items()):
         outbuf = BytesIO()
-        im = Image.open(BytesIO(base64.b64decode(v["info"]["cover"])))
+        #print(v)
+        im = Image.open(BytesIO(v["info"]["cover"]))
         im.thumbnail((30, 30), resample=Image.BICUBIC)
         im.save(outbuf, "png")
-        ix = tables.index(v["list"])
+        ix = v["list"] - 1
         
         tds[ix].insert("", k,
             "",
@@ -483,9 +571,9 @@ def start_reading():
     return ans
 
 def edit_chapter_progress(url):
-    if not settings.settings["general"]["offline"]:
-        update_info(url)
+    #if not settings.settings["general"]["offline"]: update_info(url)
     refresh_book_info()
+    #book_info = get_book_info(url)
     max_ch = len(book_info[url]["info"]["chapters"])
     layout = [
         [

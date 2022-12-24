@@ -12,9 +12,10 @@ import os
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
-from util import DEFAULT_COVER, popup_loading, tabtable, list2tree, cats, list2cat
+from util import DEFAULT_COVER, popup_loading, tabtable, cats, list2cat, lists
 import authenticate
 from requests_html import HTMLSession
+
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10))
@@ -28,7 +29,7 @@ settings.verify()
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
 
-menu = [["&Readers", []], ["&Library", ["&Open library", "&History"]], ["&Settings", ["&Preferences", "&Help"]]]
+menu = [["&Readers", []], ["&Library", ["&Open library", "&History"]], ["&Settings", ["&Preferences", "&Account settings", "&Help"]]]
 
 search_controls = [
     [
@@ -83,14 +84,16 @@ layout = [
     [sg.StatusBar("No activity", enable_events=True, key="search_statusbar", size=(50, 1))]
 ]
 
+# decrypt
 print("init db")
 if not library.init_db():
     if not authenticate.do():
         exit(0)
 
-if not library.verify_schema():
-    sg.popup_error("Your library database file is incompatible!")
-    exit(1)
+# login to account
+if not authenticate.login():
+    exit(0)
+
 
 print("updating book info")
 if settings.settings["general"]["offline"]:
@@ -118,6 +121,7 @@ wdetails = None
 wreadlist = None
 wsettings = None
 wloading = None
+waccountsettings = None
 results = []
 is_in_library = False
 which_list = 0
@@ -139,13 +143,15 @@ results = [item[0] for item in results]
 wind["book_list"].update(names)
 
 print("Loading opened chapters...")
-for ix, (book_url, chapter_url) in enumerate(library.get_opened()):
+for ix, (book_url, chapter_url, page) in enumerate(library.get_opened()):
+    print(book_url)
     readers.append(Reader(library.get_book_info(book_url)))
     chapter_index = [ch["url"] for ch in readers[ix].book_info["chapters"]].index(chapter_url)
+    readers[ix].updated = library.get_book_userinfo(book_url) is not None
     readers[ix].set_chapter(chapter_index)
     readers[ix].make_window()
     readers[ix].window.hide()
-    readers[ix].set_page(0) # change this to actual page
+    readers[ix].set_page(page) # change this to actual page
     menu[0][1].append("{} - {}".format(readers[ix].book_info["title"],
             readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"]))
 wind["menu"].update(menu)
@@ -231,7 +237,9 @@ while True:
             set_status("Downloading chapter...")
             
             print("updating...")
+            #print(readers[ix].chapter_index, library.book_info[readers[ix].book_info["url"]]["ch"])
             if readers[ix].updated:
+                #print(readers[ix].chapter_index, library.book_info[readers[ix].book_info["url"]]["ch"])
                 if readers[ix].chapter_index > library.book_info[readers[ix].book_info["url"]]["ch"]:
                     library.update_userdata(readers[ix].book_info["url"], ch=readers[ix].chapter_index)
                     if readers[ix].book_info["url"] == reader.book_info["url"]:
@@ -252,6 +260,7 @@ while True:
     if w == wind and e == sg.WIN_CLOSED:
         wloading = popup_loading("Saving changes...")
         wloading.read(timeout=0)
+        library.save_current_pages(readers)
         wind.perform_long_operation(library.cleanup_and_close, "close_ready")
     
     if e == "close_ready": break
@@ -330,17 +339,17 @@ while True:
         wind["preview_desc"].update("\n".join(textwrap.wrap(reader.book_info["description"], width=50)), visible=True)
         wind["preview_list"].update(visible=True)
 
-        is_in_library, rows = library.get_book(reader.book_info["url"])
-        if is_in_library:
+        #is_in_library, rows = library.get_book(reader.book_info["url"])
+        bi = library.get_book_userinfo(reader.book_info["url"])
+        if bi is not None:
             wind["add_to_list"].update(visible=False, disabled=False)
             wind["preview_edit_details"].update(visible=True)
-            wind["preview_book_list"].update(visible=True, value=list2cat[rows[1]])
-            ix = int(rows[9])
+            wind["preview_book_list"].update(visible=True, value=lists[bi["list"] - 1])
             wind["read_continue"].update(
-                text="[{}]".format(textwrap.shorten(reader.book_info["chapters"][ix]["name"], width=20, placeholder="...")),
+                text="[{}]".format(textwrap.shorten(reader.book_info["chapters"][bi["ch"]]["name"], width=20, placeholder="...")),
                 visible=True)
-            wind["read_continue"].set_tooltip(reader.book_info["chapters"][ix]["name"])
-            reader.chapter_index = ix
+            wind["read_continue"].set_tooltip(reader.book_info["chapters"][bi["ch"]]["name"])
+            reader.chapter_index = bi["ch"]
             reader.page_index = 0
         else:
             wind["read_continue"].update(visible=False)
@@ -351,7 +360,8 @@ while True:
         wind["read_latest"].update(visible=True)
         wind["details"].update(visible=True)
         try:
-            im = Image.open(BytesIO(base64.b64decode(reader.book_info["cover"])))
+            #im = Image.open(BytesIO(base64.b64decode(reader.book_info["cover"])))
+            im = Image.open(BytesIO(reader.book_info["cover"]))
         except:
             im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
         im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
@@ -360,7 +370,7 @@ while True:
         wind["preview_title"].set_tooltip("\n".join(reader.book_info["alt_names"]))
 
     if e == "preview_book_list":
-        dest = cats.index(v["preview_book_list"])
+        dest = cats.index(v["preview_book_list"]) + 1
         library.move(reader.book_info["url"], dest=dest)
         if wreadlist is not None:
             refresh_library_ui()
@@ -384,7 +394,7 @@ while True:
         wdetails["details_chapters"].Widget.configure(width=max([len(a) for a in chapter_and_date]))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
         
-        if is_in_library:
+        if library.get_book_userinfo(reader.book_info["url"]) is not None:
             if settings.settings["general"]["offline"]:
                 wdetails["details_chapters"].set_right_click_menu(["", ["Mark as read", "---", "!Download", "Delete"]])
             else:
@@ -508,7 +518,9 @@ while True:
         if wloading is not None: wloading.close()
         set_status(
             f"Downloaded chapter! Took {round(download_end_time - download_start_time, 2)} seconds for {len(readers[-1].images)} pages ({round(float(len(readers[-1].images))/(download_end_time - download_start_time), 2)} page/s)")
-        is_in_library, rows = library.get_book(readers[-1].book_info["url"])
+        #is_in_library, rows = library.get_book(readers[-1].book_info["url"])
+        bi = library.get_book_userinfo(readers[-1].book_info["url"])
+        is_in_library = bi is not None
         if is_in_library: readers[-1].updated = True
         if is_in_library and reader.chapter_index < readers[-1].chapter_index:
             library.update_userdata(readers[-1].book_info["url"], ch=readers[-1].chapter_index)
@@ -690,7 +702,7 @@ while True:
         print(tab)
         try:
             url = v[tabtable[tab]][0]
-            library.move(url, dest=cats.index(e))
+            library.move(url, dest=cats.index(e) + 1)
             print(url, reader.book_info["url"])
             if url == reader.book_info["url"]:
                 refresh_ui(url, "book_list_got_info")
@@ -733,10 +745,10 @@ while True:
         try:
             reader.set_book_info(v[e])
         except: continue
-        is_in_library, rows = library.get_book(reader.book_info["url"])
-        if is_in_library:
-            ix = int(rows[9])
-            reader.chapter_index = ix
+        #is_in_library, rows = library.get_book(reader.book_info["url"])
+        bi = library.get_book_userinfo(reader.book_info["url"])
+        if bi is not None:
+            reader.chapter_index = bi["ch"]
             reader.page_index = 0
             wind.write_event_value("read_continue", "")
     
@@ -785,7 +797,17 @@ while True:
     if w == wsettings and e == sg.WIN_CLOSED:
         wsettings.close()
         wsettings = None
-        
+    
+    if e == "Account settings":
+        if waccountsettings is not None:
+            waccountsettings.un_hide()
+            waccountsettings.bring_to_front()
+        else:
+            waccountsettings = settings.make_window()
+
+
+
+
     if w == wind and e == "Help":
         continue
 
