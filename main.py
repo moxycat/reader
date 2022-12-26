@@ -443,7 +443,11 @@ while True:
         wdetails["details_chapters"].update(disabled=True, set_to_index=[])
         sg.one_line_progress_meter("Downloading...", 0, len(ixs), key="download_progress", keep_on_top=True, orientation="h", no_titlebar=True, no_button=True)
         for i, ix in enumerate(ixs, start=1):
-            if not library.set_pages(reader.book_info["chapters"][len(reader.book_info["chapters"]) - ix - 1]["url"], reader.html_session):
+            url = reader.book_info["chapters"][len(reader.book_info["chapters"]) - ix - 1]["url"]
+            if url in library.get_downloaded_chapters():
+                sg.one_line_progress_meter("Downloading...", i, len(ixs), key="download_progress", keep_on_top=True, orientation="h", no_titlebar=True, no_button=True)
+                continue
+            if not library.set_pages(url, reader.html_session):
                 sg.popup("Failed to download [{}]".format(reader.book_info["chapters"][ix]["url"]), title="Download error")
             else:
                 wdetails["details_chapters"].Widget.itemconfigure(ix, bg="green")
