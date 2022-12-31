@@ -12,10 +12,10 @@ import os
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
-from util import DEFAULT_COVER, popup_loading, tabtable, cats, list2cat, lists
+from util import DEFAULT_COVER, popup_loading, tabtable, cats, list2cat, lists, slugify
 import authenticate
+import epub
 from requests_html import HTMLSession
-
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10))
@@ -500,9 +500,6 @@ while True:
         wind.perform_long_operation(lambda: readers[-1].set_chapter(ix), "open_reader")
 
     if e == "open_reader":
-        def open_reader(e: str, v: dict):
-            
-            pass
         wind["read_continue"].update(disabled=False)
         wind["read_latest"].update(disabled=False)
         wind["details"].update(disabled=False)
@@ -545,6 +542,46 @@ while True:
             refresh_ui(reader.book_info["url"], "book_list_got_info")
             #wind.perform_long_operation(lambda: mangakatana.get_manga_info(readers[-1].book_info["url"]), "book_list_got_info")
     
+    if e == "EPUB converter":
+        ixs = wdetails["details_chapters"].get_indexes()
+        ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs]
+        chapters = [reader.book_info["chapters"][ix]["url"] for ix in ixs]
+        names = [reader.book_info["chapters"][ix]["name"] for ix in ixs]
+        cn = list(zip(chapters, names))
+        cn.sort(key=lambda x: x[0])
+        chapters.sort()
+        print(chapters)
+        to_remove = []
+        abort = False
+        for chapter, name in cn:
+            if chapter not in library.get_downloaded_chapters():
+                choice, _ = sg.Window(name, [
+                        [sg.Text("That chapter is not downloaded! How do you wish to proceed?")],
+                        [sg.Button("Skip it", key="skip"), sg.Button("Abort all", key="abort")]
+                    ], disable_close=True, disable_minimize=True, modal=True, element_justification="c").read(close=True)
+                if choice == "skip": to_remove.append(chapter)
+                elif choice == "abort":
+                    abort = True
+                    break
+        
+        if abort: continue
+        for c in to_remove:
+            chapters.remove(c)
+
+        outfile = sg.popup_get_file(
+            message="Please choose where to save the file", title="EPub converter",
+            default_extension="epub", file_types=(("EPub file", "*.epub"),), save_as=True,
+            default_path=slugify(reader.book_info["title"]) + ".epub")
+
+        if outfile is None: continue
+        wloading = popup_loading("Writing to file...")
+        wloading.read(timeout=0)
+        wind.perform_long_operation(lambda: epub.make_book_from_chapters(chapters, reader.book_info, outfile), "epub_written")
+    
+    if e == "epub_written":
+        if wloading is not None:
+            wloading.close()
+
     if e == "preview_edit_details":
         ret = library.edit_chapter_progress(reader.book_info["url"])
         if ret:

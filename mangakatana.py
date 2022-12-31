@@ -336,7 +336,6 @@ def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     page_divs = resp.html.find("div[id^=\"page\"]")
     for page_div in page_divs:
         img = page_div.find("img", first=True)
-        #print(img.attrs)
         if img.attrs["src"] == "about:blank":
             links.append(img.attrs["data-src"])
         else: links.append(img.attrs["src"])

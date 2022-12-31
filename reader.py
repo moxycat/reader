@@ -28,6 +28,7 @@ class Reader:
     zoom_lock: bool = False
     downloading: bool = False
     zoom_to_fit: bool = False
+    last_size = (0, 0)
 
     def set_book_info(self, book_info: dict):
         self.book_info = book_info.copy()
@@ -232,13 +233,17 @@ class Reader:
 
     def resized(self):
         print(self.window.TKroot.state())
+        if self.window.TKroot.state() == "normal":
+            if self.window.size != self.last_size: self.refresh()
         if self.window.TKroot.state() == "zoomed":
             self.window.normal()
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
+        self.last_size = self.window.size
         print(self.window.size)
         opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - (105 if settings.settings["ui"]["theme"] == "Light" else 107)}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
+        #self.refresh()
 
     def set_page(self, n):
         if n >= 0 and n <= self.max_page_index:
@@ -312,7 +317,7 @@ class Reader:
 
     def jump(self):
         layout = [
-            [sg.Input(key="npage", size=(10, 1))],
+            [sg.Input(key="npage", size=(len(str(self.max_page_index + 1)), 1)), sg.Text("/", pad=(0, 0)), sg.Input(self.max_page_index + 1, readonly=True, disabled_readonly_background_color="white", size=(len(str(self.max_page_index + 1)), 1))],
             [sg.Button("Jump", key="jump", bind_return_key=True), sg.Button("Cancel", key="cancel")]
         ]
         w = sg.Window("Jump to page", layout, element_justification="c", modal=True, disable_minimize=True)

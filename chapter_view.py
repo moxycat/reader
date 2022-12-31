@@ -11,7 +11,11 @@ def RightClickMenuCallback(event, element):
     element.TKRightClickMenu.grab_release()
 
 def make_window():
+    menu = [
+        ["&Tools", ["&EPUB converter"]]
+    ]
     layout = [
+        [sg.Menu(menu, key="details_menu")],
         [sg.Listbox([], key="details_chapters", size=(90, 15), enable_events=True, bind_return_key=True, change_submits=True, right_click_menu=["", ["!Mark as read", "---", "!Download", "!Delete"]], select_mode=sg.LISTBOX_SELECT_MODE_EXTENDED)]
     ]
     w = sg.Window("", layout, element_justification="c", finalize=True, modal=True, disable_minimize=True)

@@ -275,7 +275,7 @@ def get_book_info(url: str):
         "status": status,
         "description": row[5]}
     
-    print(info.keys())
+    #print(info.keys())
 
     cur.execute("SELECT * FROM chapters WHERE book_url=? ORDER BY chapter_index ASC", (url,))
     chapter_rows = cur.fetchall()
@@ -410,7 +410,7 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
         url = row[1]
         
         info = get_book_info(url)
-        print(info.keys())
+        #print(info.keys())
         book_info.setdefault(url, {"ch": row[3], "vol": row[4], "score": row[5], "start_date": row[6], "end_date": row[7], "last_update": row[8], "info": info, "list": row[2]})
     cur.close()
 
