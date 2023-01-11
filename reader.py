@@ -9,7 +9,7 @@ import settings
 import bluefilter
 import library
 
-from util import ThreadThatReturns
+from util import ThreadThatReturns, outer_trim
 
 class Reader:
     window: sg.Window = None # window object
@@ -28,6 +28,7 @@ class Reader:
     zoom_lock: bool = False
     downloading: bool = False
     zoom_to_fit: bool = False
+    zoom_to_fit_mode: str = "b"
     last_size = (0, 0)
 
     def set_book_info(self, book_info: dict):
@@ -88,6 +89,8 @@ class Reader:
         if None in images: return False
         if int(settings.settings["reader"]["filter"]) > 0:
             images = bluefilter.bulk_bluefilter(images, int(settings.settings["reader"]["filter"]))
+        for i, _ in enumerate(images):
+            images[i] = outer_trim(images[i])
         self.images.clear()
         self.images = images
         self.max_page_index = len(self.images) - 1
@@ -117,21 +120,36 @@ class Reader:
         self.refresh(outbuf.getvalue())
     
     # resize an image to fit the dimensions of the current window size (keeps AR)
-    def zoom_fit(self, image: bytes):
-        im = im = Image.open(BytesIO(image))
+    def zoom_fit(self, image: bytes, mode: str="b"):
+        "modes: b - both; h - horizontal; v - vertical"
+        im = Image.open(BytesIO(image))
+        iw, ih = im.size
         ww, wh = self.window.size
+        w, h = 0, 0
         print(ww, wh)
-        ww -= 45
-        wh -= 105 if settings.settings["ui"]["theme"] == "Light" else 107
+        match mode:
+            case "b":
+                ww -= 45
+                wh -= 105 if settings.settings["ui"]["theme"] == "Light" else 107
+                w, h = ww, wh
+            case "h":
+                w = ww - 45
+                h = ih
+            case "v":
+                w = iw
+                h = wh - (105 if settings.settings["ui"]["theme"] == "Light" else 107)
         print(ww, wh)
-        im.thumbnail((ww, wh), Image.BICUBIC)
+        try:
+            im.thumbnail((w, h), Image.BICUBIC)
+        except Exception as e:
+            return None
         outbuf = BytesIO()
         im.save(outbuf, "png")
         return outbuf.getvalue()
 
     def make_window(self):
         layout = [
-            [sg.Menu([["&Tools", ["Save &screenshot", "Save &chapter"]]], key="reader_menu")],
+            [sg.Menu([["&File", ["Save &screenshot", "Save &chapter"]], ["&Tools", ["Page scaling", ["Default", "Horizontal", "Vertical", "Both"], "Zoom", ["+", "-"]]]], key="reader_menu")],
             [sg.Column([
                 [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Button("Fit", key="reader_zoom_fit", pad=0), sg.Button("Cache next ch.", key="reader_cache", pad=0)]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
@@ -213,10 +231,11 @@ class Reader:
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
         self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"] or (self.cache != [] or self.chapter_index == self.max_chapter_index))
         
+        
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
         if self.zoom_to_fit:
-            self.window["reader_page_img"].update(data=self.zoom_fit(self.images[self.page_index]))
+            self.window["reader_page_img"].update(data=self.zoom_fit(self.images[self.page_index], self.zoom_to_fit_mode))
         else:
             self.window["reader_page_img"].update(data=self.images[self.page_index])
         self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
@@ -227,7 +246,7 @@ class Reader:
         im = Image.open(BytesIO(self.images[self.page_index]))
         print(im.width, im.height)
         self.window.TKroot.maxsize(im.width + 45, im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107))
-        self.window.TKroot.minsize((im.width + 45) // 2, (im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107)) // 2)
+        self.window.TKroot.minsize(45, (105 if settings.settings["ui"]["theme"] == "Light" else 107))
         #self.window.TKroot.minsize((im.width + 45) // 2, (im.height + 70) // 2)
         im.close()
 
@@ -317,7 +336,7 @@ class Reader:
 
     def jump(self):
         layout = [
-            [sg.Input(key="npage", size=(len(str(self.max_page_index + 1)), 1)), sg.Text("/", pad=(0, 0)), sg.Input(self.max_page_index + 1, readonly=True, disabled_readonly_background_color="white", size=(len(str(self.max_page_index + 1)), 1))],
+            [sg.Input(key="npage", size=(len(str(self.max_page_index + 1)), 1), focus=True), sg.Text("/", pad=(0, 0)), sg.Input(self.max_page_index + 1, readonly=True, disabled_readonly_background_color="white", size=(len(str(self.max_page_index + 1)), 1))],
             [sg.Button("Jump", key="jump", bind_return_key=True), sg.Button("Cancel", key="cancel")]
         ]
         w = sg.Window("Jump to page", layout, element_justification="c", modal=True, disable_minimize=True)
@@ -341,32 +360,32 @@ class Reader:
     # does not handle close events
     def handle(self, event):
         if event == "reader_go_fwd" or event == "reader_page_img_reader_go_fwd": self.next_page()
-        if event == "reader_go_back" or event == "reader_page_img_reader_go_back": self.prev_page()
-        if event == "reader_go_home" or event == "reader_page_img_reader_go_home": self.set_page(0)
-        if event == "reader_go_end" or event == "reader_page_img_reader_go_end": self.set_page(self.max_page_index)
-        if event == "reader_page_num": self.jump()
-        if event == "reader_go_prev_ch": self.prev_chapter()
-        if event == "reader_go_next_ch": self.next_chapter()
-        if event == "reader_scroll_right": self.inc_hscroll(0.01)
-        if event == "reader_scroll_left": self.inc_hscroll(-0.01)
-        if event == "reader_scroll_down": self.inc_vscroll(0.01)
-        if event == "reader_scroll_up": self.inc_vscroll(-0.01)
-        if event == "reader_resized": self.resized()
-        if event == "reader_loaded_chapter":
+        elif event == "reader_go_back" or event == "reader_page_img_reader_go_back": self.prev_page()
+        elif event == "reader_go_home" or event == "reader_page_img_reader_go_home": self.set_page(0)
+        elif event == "reader_go_end" or event == "reader_page_img_reader_go_end": self.set_page(self.max_page_index)
+        elif event == "reader_page_num": self.jump()
+        elif event == "reader_go_prev_ch": self.prev_chapter()
+        elif event == "reader_go_next_ch": self.next_chapter()
+        elif event == "reader_scroll_right": self.inc_hscroll(0.01)
+        elif event == "reader_scroll_left": self.inc_hscroll(-0.01)
+        elif event == "reader_scroll_down": self.inc_vscroll(0.01)
+        elif event == "reader_scroll_up": self.inc_vscroll(-0.01)
+        elif event == "reader_resized": self.resized()
+        elif event == "reader_loaded_chapter":
             self.window["reader_cache"].update(disabled=False)
             self.set_page(0)
             self.refresh()
-        if event == "reader_zoom_in": self.set_zoom(0.25)
-        if event == "reader_zoom_out": self.set_zoom(-0.25)
-        if event == "reader_cache":
+        elif event == "reader_zoom_in": self.set_zoom(0.25)
+        elif event == "reader_zoom_out": self.set_zoom(-0.25)
+        elif event == "reader_cache":
             if self.chapter_index + 1 <= self.max_chapter_index:
                 self.window["reader_cache"].update(disabled=True)
                 self.window["reader_cache"].update("caching...")
                 self.window.perform_long_operation(lambda: self.cache_chapter(self.chapter_index + 1), "reader_cached_next")
-        if event == "reader_cached_next":
-            self.window["reader_cache"].update("cached.")
+        elif event == "reader_cached_next":
+            self.window["reader_cache"].update("cached")
         
-        if event == "Save screenshot":
+        elif event == "Save screenshot":
             files = os.listdir()
             defpath = f"{self.page_index + 1}.png"
             n = 1
@@ -384,6 +403,21 @@ class Reader:
         if event == "Save chapter":
             library.save_opened(self.book_info["chapters"][self.chapter_index]["url"])
         
-        if event == "reader_zoom_fit":
-            self.zoom_to_fit = not self.zoom_to_fit
+        if event == "Both":
+            self.zoom_to_fit_mode = "b"
+            self.zoom_to_fit = True
+            self.refresh()
+        
+        if event == "Horizontal":
+            self.zoom_to_fit_mode = "h"
+            self.zoom_to_fit = True
+            self.refresh()
+        
+        if event == "Vertical":
+            self.zoom_to_fit_mode = "v"
+            self.zoom_to_fit = True
+            self.refresh()
+
+        if event == "Default":
+            self.zoom_to_fit = False
             self.refresh()

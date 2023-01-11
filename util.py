@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 import threading
 import PySimpleGUI as sg
@@ -117,3 +117,16 @@ def list_fsearch(l: list, f: callable, first_only=False):
             if first_only: return x
             result.append(x)
     return result
+
+
+def outer_trim(data: bytes) -> bytes:
+    """Try to remove superfluous whitespace around an image"""
+    im = Image.open(BytesIO(data))
+    im.load()
+    im.convert("RGB")
+    invim = ImageOps.invert(im)
+    bbox = invim.getbbox()
+    crop = im.crop(bbox)
+    outbuf = BytesIO()
+    crop.save(outbuf, "PNG")
+    return outbuf.getvalue()

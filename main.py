@@ -12,13 +12,14 @@ import os
 import mangakatana
 import chapter_view, library, settings
 from reader import Reader
-from util import DEFAULT_COVER, popup_loading, tabtable, cats, list2cat, lists, slugify
+from util import DEFAULT_COVER, popup_loading, tabtable, cats, lists, slugify
 import authenticate
-import epub
+import epub, cbz, pdf
+
 from requests_html import HTMLSession
 
 sg.theme("Default1")
-sg.set_options(font=("Consolas", 10))
+sg.set_options(font=("Consolas", 10)) # Courier
 
 if not os.path.exists("settings.json"):
     sg.popup_error("Settings file missing!")
@@ -277,7 +278,7 @@ while True:
         wind.refresh()
         have_searched = True
         mangakatana.stop_search = False
-        searcher_thread = wind.perform_long_operation(lambda: mangakatana.new_search(query, mode, html_session, wind), "search_got_results")
+        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode, html_session, wind), "search_got_results")
 
     if e == "search_update_status":
         wind["search_status"].update("Found %d results and counting..." % v[e])
@@ -542,14 +543,15 @@ while True:
             refresh_ui(reader.book_info["url"], "book_list_got_info")
             #wind.perform_long_operation(lambda: mangakatana.get_manga_info(readers[-1].book_info["url"]), "book_list_got_info")
     
-    if e == "EPUB converter":
+    if e in ["EPUB", "CBZ", "PDF"]:
         ixs = wdetails["details_chapters"].get_indexes()
+        if not any(ixs): continue
         ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs]
         chapters = [reader.book_info["chapters"][ix]["url"] for ix in ixs]
         names = [reader.book_info["chapters"][ix]["name"] for ix in ixs]
         cn = list(zip(chapters, names))
-        cn.sort(key=lambda x: x[0])
-        chapters.sort()
+        cn.sort(key=lambda x: float(x[0].split("/")[-1].removeprefix("c")))
+        chapters.sort(key=lambda x: float(x.split("/")[-1].removeprefix("c")))
         print(chapters)
         to_remove = []
         abort = False
@@ -568,16 +570,34 @@ while True:
         for c in to_remove:
             chapters.remove(c)
 
-        outfile = sg.popup_get_file(
-            message="Please choose where to save the file", title="EPub converter",
-            default_extension="epub", file_types=(("EPub file", "*.epub"),), save_as=True,
-            default_path=slugify(reader.book_info["title"]) + ".epub")
+        match e:
+            case "EPUB":
+                outfile = sg.popup_get_file(
+                    message="Please choose where to save the file", title="EPUB",
+                    default_extension="epub", file_types=(("EPub file", "*.epub"),), save_as=True,
+                    default_path=slugify(reader.book_info["title"]) + ".epub")
+            case "CBZ":
+                outfile = sg.popup_get_file(
+                    message="Please choose where to save the file", title="CBZ",
+                    default_extension="cbz", file_types=(("CBZ file", "*.cbz"),), save_as=True,
+                    default_path=slugify(reader.book_info["title"]) + ".cbz")
+            case "PDF":
+                outfile = sg.popup_get_file(
+                    message="Please choose where to save the file", title="PDF",
+                    default_extension="pdf", file_types=(("PDF file", "*.pdf"),), save_as=True,
+                    default_path=slugify(reader.book_info["title"]) + ".pdf")
 
         if outfile is None: continue
         wloading = popup_loading("Writing to file...")
         wloading.read(timeout=0)
-        wind.perform_long_operation(lambda: epub.make_book_from_chapters(chapters, reader.book_info, outfile), "epub_written")
-    
+        match e:
+            case "CBZ":
+                wind.perform_long_operation(lambda: cbz.make_archive(chapters, outfile), "epub_written")
+            case "EPUB":
+                wind.perform_long_operation(lambda: epub.make_book_from_chapters(chapters, reader.book_info, outfile), "epub_written")
+            case "PDF":
+                wind.perform_long_operation(lambda: pdf.make_pdf(chapters, reader.book_info, outfile), "epub_written")
+
     if e == "epub_written":
         if wloading is not None:
             wloading.close()
@@ -845,9 +865,6 @@ while True:
             waccountsettings.bring_to_front()
         else:
             waccountsettings = settings.make_window()
-
-
-
 
     if w == wind and e == "Help":
         continue
