@@ -161,9 +161,15 @@ def update_info(url: str):
     return info
 
 # update user's data about a book
-def update_userdata(url, ch=None, vol=None, sd=None, ed=None, score=None, last_update=None):
+def update_userdata(
+    url,
+    ch=None, vol=None, sd=None,
+    ed=None, score=None, last_update=None):
     if last_update is None: last_update = int(time.time())
-    args = [(ch, "chapter"), (vol, "volume"), (sd, "start_date"), (ed, "end_date"), (score, "score"), (last_update, "last_update")]
+    args = [
+        (ch, "chapter"), (vol, "volume"), (sd, "start_date"),
+        (ed, "end_date"), (score, "score"), (last_update, "last_update")
+    ]
     vals = []
     for arg in args:
         if arg[0] is not None: vals.append(arg[1] + "=?")
@@ -233,7 +239,6 @@ def get_book(url: str) -> tuple[bool, None | list]:
     return (True, rows[0])
 
 def get_book_userinfo(url: str):
-    #refresh_book_info()
     cur = conn.cursor()
     cur.execute("SELECT * FROM user_books WHERE book_url=? AND user=?", (url, username))
     rows = cur.fetchall()
@@ -262,9 +267,6 @@ def get_book_info(url: str):
     chapters = []
 
     status = row[4]
-    if status == 1: status = "Completed"
-    elif status == 2: status = "Ongoing"
-    else: status = "Other"
 
     info = {
         "url": row[0],
@@ -293,6 +295,21 @@ def get_book_info(url: str):
     info["genres"] = genres
 
     return info
+
+def get_book_info_searchable(url: str):
+    """special function that returns book info + user info for effective library searching"""
+    bookinfo = get_book_info(url)
+    userinfo = get_book_userinfo(url)
+    return {
+        "title": bookinfo["title"].lower(),
+        "status": bookinfo["status"].lower(),
+        "genres": [g.lower() for g in bookinfo["genres"]],
+        "authors": [a.lower() for a in bookinfo["author"]],
+        "totalChapters": len(bookinfo["chapters"]),
+        "score": userinfo["score"],
+        "readChapters": userinfo["ch"] + 1,
+        "readVolumes": userinfo["vol"],
+    }
 
 def set_pages(chapter_url: str, session, images=None):
     cur = conn.cursor()
@@ -432,9 +449,8 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
         book_info = dict(reversed(book_info.items()))
     current_order = order_by
 
-from datetime import timedelta
 
-def time_ago_formatter(diff: timedelta):
+def time_ago_formatter(diff):
     if diff.days > 0:
         return "%s day%s ago" % (diff.days, "s" if diff.days > 1 else "")
     else: return "<1 day ago"
@@ -448,7 +464,7 @@ def make_treedata(order_by=OrderBy.UPLOAD):
         outbuf = BytesIO()
         #print(v)
         im = Image.open(BytesIO(v["info"]["cover"]))
-        im.thumbnail((30, 30), resample=Image.BICUBIC)
+        im.thumbnail((64, 64), resample=Image.BICUBIC)
         im.save(outbuf, "png")
         ix = v["list"] - 1
         
@@ -457,13 +473,16 @@ def make_treedata(order_by=OrderBy.UPLOAD):
             [
                 # name
                 textwrap.shorten(v["info"]["title"], width=50, placeholder="..."),
+                # author
+                ", ".join(v["info"]["author"]),
                 #score
                 v["score"],
                 # chapter
                 "{}/{}".format(
-                    #str(int(v["ch"]) + 1).zfill(2),
-                    str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], int(v["ch"]))).zfill(2),
-                    str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2) if v["info"]["status"] == "Completed" else "[%s]" % str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2)
+                    str(int(v["ch"]) + 1).zfill(2),
+                    ("%s" + str(len(v["info"]["chapters"])).zfill(2) + "%s") % (("[", "]") if v["info"]["status"] != "Completed" else ("", ""))
+                    #str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], int(v["ch"]))).zfill(2),
+                    #str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2) if v["info"]["status"] == "Completed" else "[%s]" % str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2)
                 ),
                 # volumes read
                 v["vol"],
@@ -473,6 +492,7 @@ def make_treedata(order_by=OrderBy.UPLOAD):
             # thumbnail
             outbuf.getvalue(),
             )
+        
     return tds
 
 def make_window():
@@ -483,8 +503,8 @@ def make_window():
     tab_cr_layout = [
         [
             TreeRtClick(
-                data=tds[0], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cr", row_height=30, num_rows=10, enable_events=False,
+                data=tds[0], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
+                key="lib_tree_cr", row_height=64, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
@@ -494,8 +514,8 @@ def make_window():
     tab_cmpl_layout = [
         [
             TreeRtClick(
-                data=tds[1], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cmpl", row_height=30, num_rows=10, enable_events=False,
+                data=tds[1], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
+                key="lib_tree_cmpl", row_height=64, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
                 expand_x=True
@@ -505,8 +525,8 @@ def make_window():
     tab_idle_layout = [
         [
             TreeRtClick(
-                data=tds[2], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_idle", row_height=30, num_rows=10, enable_events=False,
+                data=tds[2], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
+                key="lib_tree_idle", row_height=64, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
                 expand_x=True            
@@ -516,8 +536,8 @@ def make_window():
     tab_drop_layout = [
         [
             TreeRtClick(
-                data=tds[3], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_drop", row_height=30, num_rows=10, enable_events=False,
+                data=tds[3], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
+                key="lib_tree_drop", row_height=64, num_rows=10, enable_events=False,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
                 expand_x=True
@@ -527,8 +547,8 @@ def make_window():
     tab_ptr_layout = [
         [
             TreeRtClick(
-                data=tds[4], headings=["Title", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_ptr", row_height=30, num_rows=10, enable_events=True,
+                data=tds[4], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
+                key="lib_tree_ptr", row_height=64, num_rows=10, enable_events=True,
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
                 expand_x=True
@@ -700,17 +720,19 @@ def clear_search(tr: TreeRtClick):
     for ix, id in original[::-1]:
         tr.Widget.move(id, "", ix)
 
+import querylang as ql
+
 def search(query, tr: TreeRtClick):
     removed.clear()
+    id_info = []
     for id, url in tr.IdToKey.items():
         if url == "": continue
-        try:
-            if re.match(query, book_info[url]["info"]["title"], re.IGNORECASE) is None:
-                ix = tr.Widget.index(id)
-                removed.append((ix, id))
-        except:
-            return
-    print(removed)
+        id_info.append((id, get_book_info_searchable(url)))
+        print(id_info[-1][1])
 
-    for _, id in removed:
+    nonmatches = ql.search(query, [x[1] for x in id_info], True)
+    for id, info in id_info:
+        if info in nonmatches: removed.append(id)
+
+    for id in removed:
         tr.Widget.detach(id)

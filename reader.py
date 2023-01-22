@@ -89,8 +89,7 @@ class Reader:
         if None in images: return False
         if int(settings.settings["reader"]["filter"]) > 0:
             images = bluefilter.bulk_bluefilter(images, int(settings.settings["reader"]["filter"]))
-        for i, _ in enumerate(images):
-            images[i] = outer_trim(images[i])
+
         self.images.clear()
         self.images = images
         self.max_page_index = len(self.images) - 1

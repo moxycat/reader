@@ -20,6 +20,7 @@ from requests_html import HTMLSession
 
 sg.theme("Default1")
 sg.set_options(font=("Consolas", 10)) # Courier
+sg.set_options(ttk_theme="default")
 
 if not os.path.exists("settings.json"):
     sg.popup_error("Settings file missing!")
@@ -37,10 +38,10 @@ search_controls = [
         sg.Menu(menu, key="menu")
     ],
     [
-        sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white"),
+        sg.Combo(["Book name", "Author"], default_value="Book name", readonly=True, key="search_method", background_color="white", ),
         sg.Input("", key="search_bar", size=(125, 1), focus=True, expand_x=True),
-        sg.Button("⌕", key="search", bind_return_key=True),
-        sg.Button("x", key="search_cancel")
+        sg.Button("⌕", key="search", bind_return_key=True, use_ttk_buttons=True),
+        sg.Button("x", key="search_cancel", use_ttk_buttons=True)
     ],
     [sg.Text("", key="search_status", size=(125, 1))],
     [sg.HSeparator()],
@@ -56,8 +57,8 @@ search_controls = [
             [
                 [sg.Text(key="preview_title", font="Consolas 14 underline", visible=False)],
                 [sg.Image(key="preview_image")],
-                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True, background_color="white"), sg.Button("Add to list", key="add_to_list", visible=False)],
-                [sg.Button("Edit details", key="preview_edit_details", visible=False)]
+                [sg.Text("Current list", key="preview_list", visible=False), sg.Combo(["Reading", "Completed", "On-hold", "Dropped", "Plan to read"], "Reading", enable_events=True, visible=False, key="preview_book_list", readonly=True, background_color="white"), sg.Button("Add to list", key="add_to_list", visible=False, use_ttk_buttons=True)],
+                [sg.Button("Edit details", key="preview_edit_details", visible=False, use_ttk_buttons=True)]
             ], key="preview_col_0")
         ),
         #sg.VSeparator(),
@@ -71,9 +72,9 @@ search_controls = [
                 #[sg.HSeparator()],
                 [sg.Multiline(key="preview_desc", disabled=True, background_color="white", size=(50, 15), visible=False)],
                 [
-                    sg.Button("Continue reading", key="read_continue", visible=False),
-                    sg.Button("View chapters", key="details", visible=False),
-                    sg.Button("Latest chapter", key="read_latest", visible=False)
+                    sg.Button("Continue reading", key="read_continue", visible=False, use_ttk_buttons=True),
+                    sg.Button("View chapters", key="details", visible=False, use_ttk_buttons=True),
+                    sg.Button("Latest chapter", key="read_latest", visible=False, use_ttk_buttons=True)
                 ]
                 #[sg.Listbox([], key="preview_chapters", size=(50, 15), visible=False, horizontal_scroll=True)]
             ], key="preview_col_1"))
@@ -103,7 +104,7 @@ else:
     library.refresh_book_info(settings.settings["storage"]["refresh"])
 print("done")
 
-wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True)
+wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True, ttk_theme="default")
 wind.TKroot.focus_force()
 
 if settings.settings["general"]["offline"]:
@@ -687,6 +688,7 @@ while True:
             if ret == False: continue
             wreadlist[tabtable[tab]].update(key=url, value=[
                 textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
+                ", ".join(library.book_info["url"]["author"]),
                 library.book_info[url]["score"],
                 "{}/{}".format(
                     str(int(library.book_info[url]["ch"]) + 1).zfill(2),

@@ -39,7 +39,7 @@ def get_manga_info(url: str) -> dict:
     desc = soup.find("div", {"class": "summary"}).find("p").text.strip()
 
     chapters = []
-    srvr = ("" if settings.settings["server"]["source"] == "1" else "?sv=mk" if settings.settings["server"]["source"] == "2" else "?sv=3" if settings.settings["server"]["source"] == "3" else "")
+    #srvr = ("" if settings.settings["server"]["source"] == "1" else "?sv=mk" if settings.settings["server"]["source"] == "2" else "?sv=3" if settings.settings["server"]["source"] == "3" else "")
     chaptersoup = soup.find("div", {"class": "chapters"}).find("table").find("tbody").find_all("tr")
     for i, tr in enumerate(reversed(chaptersoup)):
         a = tr.find("div", {"class": "chapter"}).find("a")
@@ -47,8 +47,10 @@ def get_manga_info(url: str) -> dict:
             {
                 "index": i,
                 "name": a.text.strip(),
-                "url": a.get("href") + srvr,
-                "date": datetime.strptime(tr.find("div", {"class": "update_time"}).text.strip(), "%b-%d-%Y")
+                "url": a.get("href"),# + srvr,
+                "date": datetime.strptime(
+                    tr.find("div", {"class": "update_time"}).text.strip(),
+                    "%b-%d-%Y")
             }
         )
 
