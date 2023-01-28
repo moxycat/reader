@@ -15,6 +15,7 @@ from reader import Reader
 from util import DEFAULT_COVER, popup_loading, tabtable, cats, lists, slugify
 import authenticate
 import epub, cbz, pdf
+import account_settings
 
 from requests_html import HTMLSession
 
@@ -866,7 +867,7 @@ while True:
             waccountsettings.un_hide()
             waccountsettings.bring_to_front()
         else:
-            waccountsettings = settings.make_window()
+            waccountsettings = account_settings.make_window()
 
     if w == wind and e == "Help":
         continue

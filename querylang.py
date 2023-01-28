@@ -2,6 +2,7 @@ from rply import LexerGenerator, ParserGenerator
 from rply.token import BaseBox
 import operator
 import re
+import traceback
 
 class String(BaseBox):
     def __init__(self, value): self.value = str(value)
@@ -98,6 +99,58 @@ class Member(BinaryOp):
 
         return result
 
+class MemberReverse(BinaryOp): # again, really lazy but idc
+    def repr(self): return "MemberReverse(%s, %s)" % (self.left.repr(), self.right.repr())
+    def eval(self, rows):
+        result = []
+        key = self.left.eval(rows)
+        val = self.right.eval(rows)
+
+        for row in rows:
+            if (x := row.get(key)) is not None and val in x: result.append(row)
+
+        return result
+
+class Subset(BinaryOp):
+    def repr(self): return "Subset(%s, %s)" % (self.left.repr(), self.right.repr())
+    def eval(self, rows):
+        result = []
+        var = self.left.eval(rows)
+        val = self.right.eval(rows)
+        for row in rows:
+            if (x := row.get(var)) is not None and all(a in val for a in x): result.append(row)
+        return result
+
+class SubsetReverse(BinaryOp):
+    def repr(self): return "Subset(%s, %s)" % (self.left.repr(), self.right.repr())
+    def eval(self, rows):
+        result = []
+        var = self.left.eval(rows)
+        val = self.right.eval(rows)
+        for row in rows:
+            if (x := row.get(var)) is not None and all(a in x for a in val): result.append(row)
+        return result
+
+class Any(BinaryOp):
+    def repr(self): return "Any(%s, %s)" % (self.left.repr(), self.right.repr())
+    def eval(self, rows):
+        result = []
+        var = self.left.eval(rows)
+        val = self.right.eval(rows)
+        for row in rows:
+            if (x := row.get(var)) is not None and any(a in val for a in x): result.append(row)
+        return result
+
+class AnyReverse(BinaryOp):
+    def repr(self): return "Any(%s, %s)" % (self.left.repr(), self.right.repr())
+    def eval(self, rows):
+        result = []
+        var = self.left.eval(rows)
+        val = self.right.eval(rows)
+        for row in rows:
+            if (x := row.get(var)) is not None and any(a in x for a in val): result.append(row)
+        return result
+
 class And(BinaryOp):
     def repr(self): return "And(%s, %s)" % (self.left.repr(), self.right.repr())
     def eval(self, rows):
@@ -150,7 +203,9 @@ lg.add("<", r"\<") # lt
 lg.add("=", r"\=") # eq
 lg.add("/=", r"\/\=") # neq
 lg.add("~", r"\~") # match
-lg.add(":", r"\:") # member
+lg.add("@", r"\@") # member
+lg.add(":", r"\:") # subset
+lg.add("?", r"\?")
 
 # logical operators
 lg.add("AND", r"\&")
@@ -161,10 +216,10 @@ lg.ignore("\s+")
 
 
 pg = ParserGenerator(
-    ["ID", "STRING", "NUMBER", "(", ")", "[", "]", ",", "<=", ">=", ">", "<", "=", "/=", "~", ":", "AND", "OR", "NOT"],
+    ["ID", "STRING", "NUMBER", "(", ")", "[", "]", ",", "<=", ">=", ">", "<", "=", "/=", "~", ":", "@", "?", "AND", "OR", "NOT"],
     [
         ("left", ["AND", "OR"]),
-        ("left", ["<=", ">=", ">", "<", "=", "/=", "~", ":"])
+        ("left", ["<=", ">=", ">", "<", "=", "/=", "~", ":", "@", "?"])
     ]
 )
 @pg.production("expression : value")
@@ -197,27 +252,57 @@ def negate(p):
 def grouping(p):
     return p[1]
 
-@pg.production("comparator : value <= value")
-@pg.production("comparator : value >= value")
-@pg.production("comparator : value < value")
-@pg.production("comparator : value > value")
-@pg.production("comparator : value = value")
-@pg.production("comparator : value /= value")
-@pg.production("comparator : value ~ value")
-@pg.production("comparator : value : value")
-def expression_binop(p):
-    left = p[0]
-    right = p[2]
+@pg.production("comparator : value <= var")
+@pg.production("comparator : value >= var")
+@pg.production("comparator : value < var")
+@pg.production("comparator : value > var")
+@pg.production("comparator : value = var")
+@pg.production("comparator : value /= var")
+@pg.production("comparator : value ~ var")
+@pg.production("comparator : value @ var")
+@pg.production("comparator : value : var")
+@pg.production("comparator : value ? var")
+def expression_binop_right(p): # lazy af implementation but idc LOL
+    var = p[2]
+    val = p[0]
     op = p[1]
     match op.gettokentype():
-        case "<=": return LTE(left, right)
-        case ">=": return GTE(left, right)
-        case "<": return LT(left, right)
-        case ">": return GT(left, right)
-        case "=": return EQ(left, right)
-        case "/=": return NEQ(left, right)
-        case "~": return Match(left, right)
-        case ":": return Member(left, right)
+        case "<=": return GTE(var, val)
+        case ">=": return LTE(var, val)
+        case "<": return GT(var, val)
+        case ">": return LT(var, val)
+        case "=": return EQ(var, val)
+        case "/=": return NEQ(var, val)
+        case "~": return Match(var, val)
+        case "@": return MemberReverse(var, val)
+        case ":": return SubsetReverse(var, val)
+        case "?": return AnyReverse(var, val)
+
+@pg.production("comparator : var <= value")
+@pg.production("comparator : var >= value")
+@pg.production("comparator : var < value")
+@pg.production("comparator : var > value")
+@pg.production("comparator : var = value")
+@pg.production("comparator : var /= value")
+@pg.production("comparator : var ~ value")
+@pg.production("comparator : var @ value")
+@pg.production("comparator : var : value")
+@pg.production("comparator : var ? value")
+def expression_binop_left(p):
+    var = p[0]
+    val = p[2]
+    op = p[1]
+    match op.gettokentype():
+        case "<=": return LTE(var, val)
+        case ">=": return GTE(var, val)
+        case "<": return LT(var, val)
+        case ">": return GT(var, val)
+        case "=": return EQ(var, val)
+        case "/=": return NEQ(var, val)
+        case "~": return Match(var, val)
+        case "@": return Member(var, val)
+        case ":": return Subset(var, val)
+        case "?": return Any(var, val)
 
 @pg.production("list : [ list_inner ]")
 def valuelist(p):
@@ -236,7 +321,7 @@ def list_append(p):
     p[0].append(p[2])
     return p[0]
 
-@pg.production("value : ID")
+@pg.production("var : ID")
 @pg.production("value : STRING")
 @pg.production("value : NUMBER")
 def value(p):
@@ -248,26 +333,15 @@ def value(p):
 lexer = lg.build()
 parser = pg.build()
 
-state = [
-    {"name": "bob", "age": 27, "drink": "cola", "extra": True},
-    {"name": "alice", "age": 22, "drink": "beer"},
-    {"name": "clara", "age": 21, "drink": "sprite"},
-    {"name": "bob", "age": 21, "drink": "wine"},
-    {"name": "miner", "age": 15, "drink": "oj"},
-    {"bruh": [1, 2, 3]}
-]
-
 def search(expression, rows, invert=False):
     try:
         obj = parser.parse(lexer.lex(expression), state=None)
         print(obj.repr())
         result = obj.eval(rows)
     except Exception as e:
-        print(e)
+        print(traceback.format_exc())
         result = []
     if invert:
         return [x for x in rows if x not in result]
     else:
         return result
-
-#while 1: print(search(input("> "), state))
