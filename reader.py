@@ -31,6 +31,9 @@ class Reader:
     zoom_to_fit_mode: str = "b"
     last_size = (0, 0)
 
+    def get_frame_size(self):
+        return (self.window.size[0] - 45, self.window.size[1] - (105 if settings.settings["ui"]["theme"] == "Light" else 107))
+
     def set_book_info(self, book_info: dict):
         self.book_info = book_info.copy()
         self.max_chapter_index = len(self.book_info["chapters"]) - 1
@@ -96,6 +99,7 @@ class Reader:
         self.downloading = False
         if self.window is not None:
             library.set_pages(chapter_url, None, self.images)
+            self.window.refresh()
         return True
 
     def check_if_mini(self, event):
@@ -118,25 +122,33 @@ class Reader:
         im.save(outbuf, "png")
         self.refresh(outbuf.getvalue())
     
+    def autoscroll_frame(self):
+        _, view_h = self.get_frame_size()
+        _, total_h = Image.open(BytesIO(self.images[self.page_index])).size
+        scroll = ((self.vscroll * total_h) + view_h) / total_h
+        if scroll > 1.0:
+            self.window.write_event_value("reader_go_fwd", None)
+        else:
+            self.set_vscroll(scroll)
+        
+        
+        
+
     # resize an image to fit the dimensions of the current window size (keeps AR)
     def zoom_fit(self, image: bytes, mode: str="b"):
         "modes: b - both; h - horizontal; v - vertical"
         im = Image.open(BytesIO(image))
         iw, ih = im.size
-        ww, wh = self.window.size
+        ww, wh = self.get_frame_size()
         w, h = 0, 0
         print(ww, wh)
         match mode:
             case "b":
-                ww -= 45
-                wh -= 105 if settings.settings["ui"]["theme"] == "Light" else 107
                 w, h = ww, wh
             case "h":
-                w = ww - 45
-                h = ih
+                w, h = ww, ih
             case "v":
-                w = iw
-                h = wh - (105 if settings.settings["ui"]["theme"] == "Light" else 107)
+                w, h = iw, wh
         print(ww, wh)
         try:
             im.thumbnail((w, h), Image.BICUBIC)
@@ -195,6 +207,7 @@ class Reader:
         self.window.TKroot.bind("<Next>", lambda _: self.set_vscroll(1.0))
         self.window.TKroot.bind("<Home>", lambda _: self.set_hscroll(0.0))
         self.window.TKroot.bind("<End>", lambda _: self.set_hscroll(1.0))
+        self.window.TKroot.bind("<space>", lambda _: self.autoscroll_frame())
 
         self.window["reader_page_img"].bind("<Button-3>", "_reader_go_back")
         self.window["reader_page_img"].bind("<Button-1>", "_reader_go_fwd")
@@ -254,12 +267,13 @@ class Reader:
         if self.window.TKroot.state() == "normal":
             if self.window.size != self.last_size: self.refresh()
         if self.window.TKroot.state() == "zoomed":
-            self.window.normal()
+            self.window.maximize()
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
         self.last_size = self.window.size
         print(self.window.size)
-        opts = {"width": self.window.size[0] - 45, "height": self.window.size[1] - (105 if settings.settings["ui"]["theme"] == "Light" else 107)}
+        w, h = self.get_frame_size()
+        opts = {"width": w, "height": h}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
         #self.refresh()
 

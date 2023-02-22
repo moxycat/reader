@@ -4,7 +4,15 @@ import library
 
 def make_window():
     layout = [
-        [sg.Text("New username:"), sg.Input("")],
-        [sg.Text("Password:"), sg.Input("", password_char="*")]
+        [
+            sg.Column([
+                [sg.Text("Username")],
+                [sg.Text("Password")]
+            ]),
+            sg.Column([
+                [sg.Input("", key="username")],
+                [sg.Input("", key="password")]
+            ])
+        ]
     ]
     return sg.Window("Account settings", layout, finalize=True)

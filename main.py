@@ -105,6 +105,22 @@ else:
     library.refresh_book_info(settings.settings["storage"]["refresh"])
 print("done")
 
+readers = []
+
+print("Loading opened chapters...")
+for ix, (book_url, chapter_url, page) in enumerate(library.get_opened()):
+    print(book_url)
+    readers.append(Reader(library.get_book_info(book_url)))
+    chapter_index = [ch["url"] for ch in readers[ix].book_info["chapters"]].index(chapter_url)
+    readers[ix].updated = library.get_book_userinfo(book_url) is not None
+    readers[ix].set_chapter(chapter_index)
+    readers[ix].make_window()
+    readers[ix].window.hide()
+    readers[ix].set_page(page) # change this to actual page
+    menu[0][1].append("{} - {}".format(readers[ix].book_info["title"],
+            readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"]))
+
+
 wind = sg.Window("Moxy's manga reader [alpha ver. 1]", layout=layout, element_justification="l", finalize=True, ttk_theme="default")
 wind.TKroot.focus_force()
 
@@ -118,7 +134,7 @@ html_session = HTMLSession()
 html_session.browser
 
 reader = Reader() # temp reader used for info tx when browsing books
-readers = []
+
 
 wdetails = None
 wreadlist = None
@@ -145,18 +161,7 @@ names = [item[0] for item in names]
 results = [item[0] for item in results]
 wind["book_list"].update(names)
 
-print("Loading opened chapters...")
-for ix, (book_url, chapter_url, page) in enumerate(library.get_opened()):
-    print(book_url)
-    readers.append(Reader(library.get_book_info(book_url)))
-    chapter_index = [ch["url"] for ch in readers[ix].book_info["chapters"]].index(chapter_url)
-    readers[ix].updated = library.get_book_userinfo(book_url) is not None
-    readers[ix].set_chapter(chapter_index)
-    readers[ix].make_window()
-    readers[ix].window.hide()
-    readers[ix].set_page(page) # change this to actual page
-    menu[0][1].append("{} - {}".format(readers[ix].book_info["title"],
-            readers[ix].book_info["chapters"][readers[ix].chapter_index]["name"]))
+
 wind["menu"].update(menu)
 print("Done!")
 
@@ -179,6 +184,21 @@ def refresh_library_ui():
     wreadlist["lib_tree_drop"].update(tds[3])
     wreadlist["lib_tree_ptr"].update(tds[4])
     wreadlist.refresh()
+
+def search(v, wind, html_session):
+    global have_searched, searcher_thread
+    query = v["search_bar"]
+    mode = 0 if v["search_method"] == "Book name" else 1 if v["search_method"] == "Author" else 0
+    if len(query) < 3:
+        wind["search_status"].update("Try searching for 3 or more characters.")
+        return
+    wind["search_status"].update("Searching...")
+    set_status("Searching...")
+    wind["search_bar"].update(disabled=True)
+    wind.refresh()
+    have_searched = True
+    mangakatana.stop_search = False
+    searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode, html_session, wind), "search_got_results")
 
 while True:
     w, e, v = sg.read_all_windows()
@@ -268,20 +288,8 @@ while True:
     
     if e == "close_ready": break
 
-    if e == "search":
-        query = v["search_bar"]
-        mode = 0 if v["search_method"] == "Book name" else 1 if v["search_method"] == "Author" else 0
-        if len(query) < 3:
-            wind["search_status"].update("Try searching for 3 or more characters.")
-            continue
-        wind["search_status"].update("Searching...")
-        set_status("Searching...")
-        w["search_bar"].update(disabled=True)
-        wind.refresh()
-        have_searched = True
-        mangakatana.stop_search = False
-        searcher_thread = wind.perform_long_operation(lambda: mangakatana.search(query, mode, html_session, wind), "search_got_results")
-
+    if e == "search": search(v, wind, html_session)
+    
     if e == "search_update_status":
         wind["search_status"].update("Found %d results and counting..." % v[e])
         wind.refresh()
@@ -394,7 +402,7 @@ while True:
         dates = [datetime.strftime(a["date"], "%b-%d-%Y") for a in reader.book_info["chapters"][::-1]]
         longestname = max([len(a) for a in chapters])
         chapter_and_date = ["{}{}{}".format(a[0], " " * (longestname - len(a[0]) + 5), a[1]) for a in zip(chapters, dates)]
-        wdetails["details_chapters"].Widget.configure(width=max([len(a) for a in chapter_and_date]))
+        wdetails["details_chapters"].Widget.configure(width=max(len(a) for a in chapter_and_date))
         wdetails["details_chapters"].update(values=chapter_and_date, visible=True)
         
         if library.get_book_userinfo(reader.book_info["url"]) is not None:
@@ -636,6 +644,7 @@ while True:
         library.get_original(wreadlist["lib_tree_cr"])
     
     if w == wreadlist and e == "Check for updates":
+        wreadlist.TKroot.title("Library [Updating catalogue...]")
         library.refresh_book_info(full=True)
         tds = library.make_treedata()
         wreadlist["lib_tree_cr"].update(tds[0])
@@ -643,6 +652,7 @@ while True:
         wreadlist["lib_tree_idle"].update(tds[2])
         wreadlist["lib_tree_drop"].update(tds[3])
         wreadlist["lib_tree_ptr"].update(tds[4])
+        wreadlist.TKroot.title("Library")
         wreadlist.refresh()
     
     if w == wreadlist and e in ["Title::title", "Score::score", "Chapters::chapters", "Volumes::volumes", "Latest upload::upload", "Last update::update"]:
