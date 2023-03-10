@@ -29,6 +29,7 @@ class Reader:
     downloading: bool = False
     zoom_to_fit: bool = False
     zoom_to_fit_mode: str = "b"
+    zoom_size: tuple[int, int] = (None, None)
     last_size = (0, 0)
 
     def get_frame_size(self):
@@ -141,7 +142,7 @@ class Reader:
         iw, ih = im.size
         ww, wh = self.get_frame_size()
         w, h = 0, 0
-        print(ww, wh)
+        #print(ww, wh)
         match mode:
             case "b":
                 w, h = ww, wh
@@ -149,7 +150,7 @@ class Reader:
                 w, h = ww, ih
             case "v":
                 w, h = iw, wh
-        print(ww, wh)
+        #print(ww, wh)
         try:
             im.thumbnail((w, h), Image.BICUBIC)
         except Exception as e:
@@ -211,6 +212,7 @@ class Reader:
 
         self.window["reader_page_img"].bind("<Button-3>", "_reader_go_back")
         self.window["reader_page_img"].bind("<Button-1>", "_reader_go_fwd")
+        self.window.TKroot.minsize(45, (105 if settings.settings["ui"]["theme"] == "Light" else 107))
         #self.window["reader_page_img"].bind("<Double-Button-1>", "_reader_go_home")
         #self.window["reader_page_img"].bind("<Double-Button-3>","_reader_go_end")
     
@@ -243,27 +245,46 @@ class Reader:
         self.window["reader_go_home"].update(disabled=self.page_index == 0)
         self.window["reader_cache"].update(disabled=settings.settings["general"]["offline"] or (self.cache != [] or self.chapter_index == self.max_chapter_index))
         
-        
+        if self.zoom_to_fit:
+            theimage = self.zoom_fit(self.images[self.page_index], self.zoom_to_fit_mode)
+        else:
+            theimage = self.images[self.page_index]
+
         if self.cache == []:
             self.window["reader_cache"].update("cache next ch.")
-        if self.zoom_to_fit:
-            self.window["reader_page_img"].update(data=self.zoom_fit(self.images[self.page_index], self.zoom_to_fit_mode))
-        else:
-            self.window["reader_page_img"].update(data=self.images[self.page_index])
+        self.window["reader_page_img"].update(data=theimage)
         self.window["reader_zoom_level"].update("x" + str(self.zoom_level))
         self.window.refresh()
         self.window["reader_page_img_col"].contents_changed()
         self.window["reader_page_img_col"].Widget.canvas.yview_moveto(0.0)
         self.window["reader_page_img_col"].Widget.canvas.xview_moveto(0.0)
-        im = Image.open(BytesIO(self.images[self.page_index]))
-        print(im.width, im.height)
-        self.window.TKroot.maxsize(im.width + 45, im.height + (105 if settings.settings["ui"]["theme"] == "Light" else 107))
-        self.window.TKroot.minsize(45, (105 if settings.settings["ui"]["theme"] == "Light" else 107))
-        #self.window.TKroot.minsize((im.width + 45) // 2, (im.height + 70) // 2)
+        im = Image.open(BytesIO(theimage))
+        if not self.zoom_to_fit:
+            w, h = im.width, im.height
+            self.window.TKroot.maxsize(w + 45, h + (105 if settings.settings["ui"]["theme"] == "Light" else 107))
+            self.zoom_size = (None, None)
+        else:
+            if self.zoom_to_fit_mode == "h": w, h = self.window.size[0], im.height
+            elif self.zoom_to_fit_mode == "v": w, h = im.width, self.window.size[1]
+            elif self.zoom_to_fit_mode == "b": w, h = self.get_frame_size()
+            if not self.zoom_size: self.zoom_size = (w, h)
+            self.window.TKroot.maxsize(*self.zoom_size)
+        
+        
         im.close()
 
+    def set_window_size(self, w, h):
+        minw, minh = self.window.TKroot.minsize()
+        maxw, maxh = self.window.TKroot.maxsize()
+        self.window.TKroot.minsize(w, h)
+        self.window.TKroot.maxsize(w, h)
+        self.window.refresh()
+        self.window.TKroot.minsize(minw, minh)
+        self.window.TKroot.maxsize(maxw, maxh)
+        self.window.refresh()
+
     def resized(self):
-        print(self.window.TKroot.state())
+        #print(self.window.TKroot.state())
         if self.window.TKroot.state() == "normal":
             if self.window.size != self.last_size: self.refresh()
         if self.window.TKroot.state() == "zoomed":
@@ -271,11 +292,10 @@ class Reader:
         if self.window.TKroot.wm_state() == "iconic":
             self.window.hide()
         self.last_size = self.window.size
-        print(self.window.size)
+        #print(self.window.size)
         w, h = self.get_frame_size()
         opts = {"width": w, "height": h}
         self.window["reader_page_img_col"].Widget.canvas.configure(**opts)
-        #self.refresh()
 
     def set_page(self, n):
         if n >= 0 and n <= self.max_page_index:

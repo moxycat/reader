@@ -1,5 +1,6 @@
 import PySimpleGUI as sg
 
+
 def RightClickMenuCallback(event, element):
     widget = element.Widget
     current = widget.curselection()

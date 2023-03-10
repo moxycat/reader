@@ -3,19 +3,18 @@ import PySimpleGUI as sg
 from io import BytesIO
 from PIL import Image
 from datetime import datetime
-import re
-import hashlib
-import time
-import json
+import re, hashlib, time, json
+import Levenshtein as lev
 import config
 if config.enable_sqlcipher:
     from sqlcipher3 import dbapi2 as sql
 else:
     import sqlite3 as sql
 from concurrent.futures import ThreadPoolExecutor
+from collections import defaultdict
 
 import mangakatana, settings
-from util import TreeRtClick, tables, OrderBy, BookList
+from util import TreeRtClick, tables, OrderBy, BookList, uniq, sizeof_fmt
 
 conn: sql.Connection = None
 book_info = {}
@@ -357,6 +356,24 @@ def get_downloaded_chapters():
     cur.close()
     return [row[0] for row in rows]
 
+def get_downloaded_books():
+    """Returns `dict` where keys are `(url, title)` tuples for each book, the values of which are lists containing tuples for each downloaded chapter of said book."""
+    chapter_urls = get_downloaded_chapters()
+    cur = conn.cursor()
+    d = defaultdict(list)
+    for url in chapter_urls:
+        cur.execute("SELECT books.url, books.title, chapters.chapter_url, chapters.chapter_index, chapters.title, chapters.date FROM chapters INNER JOIN books ON chapters.book_url = books.url WHERE chapters.chapter_url = ?", (url,))
+        rows = cur.fetchall()
+        for row in rows: d[row[0:2]].append(row[2:])
+    cur.close()
+    for k, v in d.items():
+        d[k] = sorted(v, key=lambda t: t[1])
+    return d
+
+def get_book_downloaded_chapters(book_url):
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM books INNER JOIN chapters ON")
+
 def setas_opened(book_url, chapter_url, autodownload:bool=False):
     print(book_url, chapter_url, autodownload)
     cur = conn.cursor()
@@ -409,7 +426,7 @@ def save_current_pages(readers):
     conn.commit()
 
 # full refresh means all book info will be fetched from server first otherwise it'll just be read as-is from the database
-def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
+def refresh_book_info(full=False, order_by=OrderBy.UPLOAD, k=None):
     global book_info, current_order
     book_info.clear()
     cur = conn.cursor()
@@ -431,6 +448,12 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
         book_info.setdefault(url, {"ch": row[3], "vol": row[4], "score": row[5], "start_date": row[6], "end_date": row[7], "last_update": row[8], "info": info, "list": row[2]})
     cur.close()
 
+
+    def thing(x, k):
+        title = x[1]["info"]["title"].lower().translate({ord(c): None for c in "!\"#$%&'()*+,-./:;<=>?@[\]^_`{|}~"})
+        a = lev.ratio(title, k.lower())
+        print(title, a)
+        return a
     match order_by:
         case OrderBy.UPLOAD:
             book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["info"]["chapters"][-1]["date"]))
@@ -444,8 +467,10 @@ def refresh_book_info(full=False, order_by=OrderBy.UPLOAD):
             book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["ch"], reverse=True))
         case OrderBy.VOLUMES:
             book_info = dict(sorted(book_info.items(), key=lambda item: item[1]["vol"], reverse=True))
+        case OrderBy.LEV:
+            book_info = dict(sorted(book_info.items(), key=lambda x: thing(x, k), reverse=True))
     
-    if order_by == current_order:
+    if order_by == current_order and order_by != OrderBy.LEV:
         book_info = dict(reversed(book_info.items()))
     current_order = order_by
 
@@ -455,9 +480,9 @@ def time_ago_formatter(diff):
         return "%s day%s ago" % (diff.days, "s" if diff.days > 1 else "")
     else: return "<1 day ago"
 
-def make_treedata(order_by=OrderBy.UPLOAD):
+def make_treedata(order_by=OrderBy.UPLOAD, k=None):
     global thumbnails
-    refresh_book_info(order_by=order_by)
+    refresh_book_info(order_by=order_by, k=k)
     tds = [sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData(), sg.TreeData()]
 
     for i, (k, v) in enumerate(book_info.items()):
@@ -558,10 +583,10 @@ def make_window():
 
     layout = [
         [
-            sg.Menu([["Library", ["&Refresh", ("!" if settings.settings["general"]["offline"] else "") + "&Check for updates", "&Sort by", ["&Title::title", "&Score::score", "&Chapters::chapters", "&Volumes::volumes", "Latest up&load::upload", "Last up&date::update"]]]], key="lib_menu")
+            sg.Menu([["Library", ["&Refresh", ("!" if settings.settings["general"]["offline"] else "") + "&Check for updates", "&Sort by", ["&Title::title", "&Score::score", "&Chapters::chapters", "&Volumes::volumes", "Latest up&load::upload", "Last up&date::update"]]], ["Local storage", ["View all downloaded chapters"]]], key="lib_menu")
         ],
         [
-            sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
+            sg.Combo(["Title", "Adv."], "Title", readonly=True, background_color="white", key="lib_search_method"), sg.Input(key="lib_search_query", expand_x=True), sg.Button("⌕", key="lib_search", bind_return_key=True)
         ],
         #[sg.Text("Order by"), sg.Combo(["Title", "Score", "Chapters", "Volumes", "Latest upload"])],
         [
@@ -580,15 +605,54 @@ def make_window():
 
 def start_reading():
     layout = [
-        [sg.Text("Would you like to add this book to your reading list?")],
+        [sg.Text("Would you like to add this book to your library?")],
         [sg.Button("Yes", key="reading_start_yes"), sg.Button("No", key="reading_start_no")]
     ]
     w = sg.Window("", layout, modal=True, finalize=True, disable_minimize=True, disable_close=True, element_justification="c")
     ans = False
-    e, v = w.read()
+    e, _ = w.read()
     if e == "reading_start_yes": ans = True
     w.close()
     return ans
+
+def view_downloaded_chapters():
+    info = get_downloaded_books()
+    layout = [
+        [
+            sg.Column([[sg.Listbox(values=[k[1] for k in info.keys()], enable_events=True, key="book_list", size=(50, 12))]]),
+            sg.vtop(sg.Column([[sg.Listbox(values=[], enable_events=True, size=(50, 10), key="chapters_list", select_mode=sg.SELECT_MODE_MULTIPLE)],
+                       [sg.ButtonMenu("Export as", ["", ["EPUB", "PDF", "CBZ"]], key="export"), sg.Button("Delete", key="delete"), sg.Text("Disk space: 0B", key="space")]]))
+        ]
+    ]
+    w = sg.Window("Local storage", layout, modal=True, finalize=True, disable_minimize=True)
+    while True:
+        e, v = w.read()
+        print(e)
+        if e == None: break
+        if e == "book_list":
+            ix = w["book_list"].get_indexes()[0]
+            chapters = list(info.items())[ix][1]
+            urls = [c[0] for c in chapters]
+            w["chapters_list"].update([c[2] for c in chapters])
+            total_size = sum(sum(len(page) for page in get_pages(url)) for url in urls)
+            w["space"].update("Disk space: %s" % sizeof_fmt(total_size))
+            w.refresh()
+        if e == "delete":
+            book_ix = w["book_list"].get_indexes()[0]
+            chapter_ixs = w["chapters_list"].get_indexes()
+            if not any(chapter_ixs): continue
+            k = list(info.items())[book_ix][0]
+            for i in chapter_ixs:
+                url = list(info.items())[book_ix][1][i][0]
+                delete_pages(url)
+            for i in sorted(chapter_ixs, reverse=True):
+                info[k].pop(i)
+            w["chapters_list"].update([c[2] for c in list(info.items())[book_ix][1]])
+            w.refresh()
+        if e == "export":
+            print(v["export"])
+
+    w.close()
 
 def edit_chapter_progress(url):
     #if not settings.settings["general"]["offline"]: update_info(url)
