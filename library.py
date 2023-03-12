@@ -15,6 +15,7 @@ from collections import defaultdict
 
 import mangakatana, settings
 from util import TreeRtClick, tables, OrderBy, BookList, uniq, sizeof_fmt
+import epub, pdf, cbz
 
 conn: sql.Connection = None
 book_info = {}
@@ -489,7 +490,7 @@ def make_treedata(order_by=OrderBy.UPLOAD, k=None):
         outbuf = BytesIO()
         #print(v)
         im = Image.open(BytesIO(v["info"]["cover"]))
-        im.thumbnail((64, 64), resample=Image.BICUBIC)
+        im.thumbnail((48, 48), resample=Image.BICUBIC)
         im.save(outbuf, "png")
         ix = v["list"] - 1
         
@@ -509,7 +510,7 @@ def make_treedata(order_by=OrderBy.UPLOAD, k=None):
                     #str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], int(v["ch"]))).zfill(2),
                     #str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2) if v["info"]["status"] == "Completed" else "[%s]" % str(mangakatana.find_chapter_ordinal([item["url"] for item in v["info"]["chapters"]], len(v["info"]["chapters"]) - 1)).zfill(2)
                 ),
-                # volumes read
+                # Volumes
                 v["vol"],
                 
                 time_ago_formatter(datetime.now() - v["info"]["chapters"][-1]["date"])
@@ -523,60 +524,60 @@ def make_treedata(order_by=OrderBy.UPLOAD, k=None):
 def make_window():
     global thumbnails
     tds = make_treedata()
-    title_max_len = 65
+    title_max_len = 1000
 
     tab_cr_layout = [
         [
             TreeRtClick(
-                data=tds[0], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cr", row_height=64, num_rows=10, enable_events=False,
+                data=tds[0], headings=["Title", "Author(s)", "Score", "Chapter", "Volumes", "Lastest upload"], col0_heading="",
+                key="lib_tree_cr", row_height=48, num_rows=10, enable_events=False, col0_width=9, col_widths=[10, 10, 2, 10, 10, 7],
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Completed", "On-hold", "Dropped", "Plan to read"]]],
-                expand_x=True
+                expand_x=True, expand_y=True
             )
         ]
     ]
     tab_cmpl_layout = [
         [
             TreeRtClick(
-                data=tds[1], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_cmpl", row_height=64, num_rows=10, enable_events=False,
+                data=tds[1], headings=["Title", "Author(s)", "Score", "Chapter", "Volumes", "Lastest upload"], col0_heading="",
+                key="lib_tree_cmpl", row_height=48, num_rows=10, enable_events=False, col0_width=9, col_widths=[10, 10, 2, 10, 10, 7],
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "On-hold", "Dropped", "Plan to read"]]],
-                expand_x=True
+                expand_x=True, expand_y=True
             )
         ]
     ]
     tab_idle_layout = [
         [
             TreeRtClick(
-                data=tds[2], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_idle", row_height=64, num_rows=10, enable_events=False,
+                data=tds[2], headings=["Title", "Author(s)", "Score", "Chapter", "Volumes", "Lastest upload"], col0_heading="",
+                key="lib_tree_idle", row_height=48, num_rows=10, enable_events=False, col0_width=9, col_widths=[10, 10, 2, 10, 10, 7],
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "Dropped", "Plan to read"]]],
-                expand_x=True            
+                expand_x=True, expand_y=True
             )
         ]
     ]
     tab_drop_layout = [
         [
             TreeRtClick(
-                data=tds[3], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_drop", row_height=64, num_rows=10, enable_events=False,
+                data=tds[3], headings=["Title", "Author(s)", "Score", "Chapter", "Volumes", "Lastest upload"], col0_heading="",
+                key="lib_tree_drop", row_height=48, num_rows=10, enable_events=False, col0_width=9, col_widths=[10, 10, 2, 10, 10, 7],
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Plan to read"]]],
-                expand_x=True
+                expand_x=True, expand_y=True
             )
         ]
     ]
     tab_ptr_layout = [
         [
             TreeRtClick(
-                data=tds[4], headings=["Title", "Author(s)", "Score", "Current chapter", "Volumes read", "Lastest upload"], col0_heading="",
-                key="lib_tree_ptr", row_height=64, num_rows=10, enable_events=True,
+                data=tds[4], headings=["Title", "Author(s)", "Score", "Chapter", "Volumes", "Lastest upload"], col0_heading="",
+                key="lib_tree_ptr", row_height=48, num_rows=10, enable_events=False, col0_width=9, col_widths=[10, 10, 2, 10, 10, 7],
                 max_col_width=title_max_len, justification="l",
                 right_click_menu=["", ["More info", "View chapters", "Edit", "Remove", "Move to", ["Reading", "Completed", "On-hold", "Dropped"]]],
-                expand_x=True
+                expand_x=True, expand_y=True
             )
         ]
     ]
@@ -598,7 +599,7 @@ def make_window():
                     sg.Tab("Dropped", tab_drop_layout, key="tab_dropped"),
                     sg.Tab("Plan to read", tab_ptr_layout, key="tab_ptr")
                 ]
-            ], tab_location="topleft", enable_events=True, key="tab_group")
+            ], tab_location="topleft", enable_events=True, key="tab_group", expand_x=True, expand_y=True)
         ]
     ]
     return layout
@@ -662,8 +663,8 @@ def edit_chapter_progress(url):
     layout = [
         [
             sg.Column([
-                [sg.Text("Chapters read")],
-                [sg.Text("Volumes read")],
+                [sg.Text("Chapters")],
+                [sg.Text("Volumes")],
                 [sg.Text("Score")],
                 [sg.Text("Start date")],
                 [sg.Text("End date")]

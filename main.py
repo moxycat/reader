@@ -563,7 +563,7 @@ while True:
     
     if e in ["EPUB", "CBZ", "PDF"]:
         ixs = wdetails["details_chapters"].get_indexes()
-        if not any(ixs): continue
+        if not any(True for _ in ixs): continue
         ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs]
         chapters = [reader.book_info["chapters"][ix]["url"] for ix in ixs]
         names = [reader.book_info["chapters"][ix]["name"] for ix in ixs]
@@ -642,7 +642,7 @@ while True:
     if e == "lib_window_made":
         if wloading is not None: wloading.close()
         layout = v[e]
-        wreadlist = sg.Window("Library", layout, finalize=True, element_justification="l")
+        wreadlist = sg.Window("Library", layout, finalize=True, element_justification="l", resizable=True)
 
         wreadlist["lib_tree_cr"].bind("<Double-Button-1>", "_open_book")
         wreadlist["lib_tree_cmpl"].bind("<Double-Button-1>", "_open_book")
@@ -654,14 +654,8 @@ while True:
     if w == wreadlist and e == "Check for updates":
         wreadlist.TKroot.title("Library [Updating catalogue...]")
         library.refresh_book_info(full=True)
-        tds = library.make_treedata()
-        wreadlist["lib_tree_cr"].update(tds[0])
-        wreadlist["lib_tree_cmpl"].update(tds[1])
-        wreadlist["lib_tree_idle"].update(tds[2])
-        wreadlist["lib_tree_drop"].update(tds[3])
-        wreadlist["lib_tree_ptr"].update(tds[4])
+        refresh_library_ui()
         wreadlist.TKroot.title("Library")
-        wreadlist.refresh()
     
     if w == wreadlist and e in ["Title::title", "Score::score", "Chapters::chapters", "Volumes::volumes", "Latest upload::upload", "Last update::update"]:
         orders = {
@@ -672,16 +666,9 @@ while True:
             "Latest upload::upload": library.OrderBy.UPLOAD,
             "Last update::update": library.OrderBy.UPDATE
         }
-        tds = library.make_treedata(orders[e])
-        wreadlist["lib_tree_cr"].update(tds[0])
-        wreadlist["lib_tree_cmpl"].update(tds[1])
-        wreadlist["lib_tree_idle"].update(tds[2])
-        wreadlist["lib_tree_drop"].update(tds[3])
-        wreadlist["lib_tree_ptr"].update(tds[4])
-        wreadlist.refresh()
-        pass
+        refresh_library_ui()
     
-    if e == "lib_search":
+    if e == "lib_ search":
         q = v["lib_search_query"]
         tab = v["tab_group"]
 
@@ -727,19 +714,7 @@ while True:
             url = v[tabtable[tab]][0]
             ret = library.edit_chapter_progress(url)
             if ret == False: continue
-            wreadlist[tabtable[tab]].update(key=url, value=[
-                textwrap.shorten(library.book_info[url]["info"]["title"], width=50, placeholder="..."),
-                ", ".join(library.book_info["url"]["author"]),
-                library.book_info[url]["score"],
-                "{}/{}".format(
-                    str(int(library.book_info[url]["ch"]) + 1).zfill(2),
-                    str(len(library.book_info[url]["info"]["chapters"])).zfill(2) if library.book_info[url]["info"]["status"] == "Completed" else "[" + str(len(library.book_info[url]["info"]["chapters"])).zfill(2) + "]"
-                ),
-                library.book_info[url]["vol"],
-                str((datetime.now() - library.book_info[url]["info"]["chapters"][-1]["date"]).days) + " days ago"
-            ])
-
-            wreadlist.refresh()
+            refresh_library_ui()
             if url == reader.book_info["url"]:
                 refresh_ui(url, "book_list_got_info")
                 #wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), "book_list_got_info")

@@ -38,6 +38,7 @@ def login():
         if e == "login":
             username = v["username"]
             password = v["password"]
+            if not len(username) or not len(password): continue
             if not library.login(username, password):
                 wind["status"].update("Wrong credentials!")
                 wind["password"].update("")
@@ -47,6 +48,7 @@ def login():
         if e == "register":
             username = v["username"]
             password = v["password"]
+            if not len(username) or not len(password): continue
             if not library.register(username, password):
                 wind["status"].update("An account with that name already exists!")
                 wind["username"].update("")
