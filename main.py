@@ -668,7 +668,7 @@ while True:
         }
         refresh_library_ui()
     
-    if e == "lib_ search":
+    if e == "lib_search":
         q = v["lib_search_query"]
         tab = v["tab_group"]
 
