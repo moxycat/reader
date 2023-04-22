@@ -179,8 +179,11 @@ def refresh_ui(url: str, event: str):
         #wind.perform_long_operation(lambda: mangakatana.get_manga_info(url), event)
         wind.perform_long_operation(lambda: library.update_info(url), event)
 
-def refresh_library_ui():
-    tds = library.make_treedata()
+def refresh_library_ui(order=None):
+    if order:
+        tds = library.make_treedata(order)
+    else:
+        tds = library.make_treedata()
     wreadlist["lib_tree_cr"].update(tds[0])
     wreadlist["lib_tree_cmpl"].update(tds[1])
     wreadlist["lib_tree_idle"].update(tds[2])
@@ -411,7 +414,7 @@ while True:
             im = Image.open(BytesIO(reader.book_info["cover"]))
         except:
             im = Image.open(BytesIO(base64.b64decode(DEFAULT_COVER)))
-        im.thumbnail(size=(320, 320), resample=Image.BICUBIC)
+        im.thumbnail(size=(320, 320), resample=Image.Resampling.BICUBIC)
         wind["preview_image"].update(data=ImageTk.PhotoImage(image=im))
         wind["preview_title"].update("\n".join(textwrap.wrap(reader.book_info["title"], width=im.width//8)), visible=True)
         wind["preview_title"].set_tooltip("\n".join(reader.book_info["alt_names"]))
@@ -614,7 +617,7 @@ while True:
             case "EPUB":
                 wind.perform_long_operation(lambda: epub.make_book_from_chapters(chapters, reader.book_info, outfile), "epub_written")
             case "PDF":
-                wind.perform_long_operation(lambda: pdf.make_pdf(chapters, reader.book_info, outfile), "epub_written")
+                wind.perform_long_operation(lambda: pdf.make_pdf(chapters, outfile), "epub_written")
 
     if e == "epub_written":
         if wloading is not None:
@@ -666,7 +669,7 @@ while True:
             "Latest upload::upload": library.OrderBy.UPLOAD,
             "Last update::update": library.OrderBy.UPDATE
         }
-        refresh_library_ui()
+        refresh_library_ui(orders[e])
     
     if e == "lib_search":
         q = v["lib_search_query"]
@@ -888,6 +891,16 @@ while True:
             waccountsettings.bring_to_front()
         else:
             waccountsettings = account_settings.make_window()
+
+    if e == None and w == waccountsettings:
+        waccountsettings.close()
+        waccountsettings = None
+
+    if e == "acs_save":
+        if library.update_user(v["acs_old_password"], v["acs_new_password"]):
+            waccountsettings.close()
+            waccountsettings = None
+
 
     if w == wind and e == "Help":
         continue

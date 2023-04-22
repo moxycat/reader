@@ -28,7 +28,7 @@ username: str = None
 password: str = None
 
 def init_db(password=None):
-    global conn, cur
+    global conn
     conn = sql.connect(settings.settings["storage"]["path"], check_same_thread=False)
     if password is not None:
         conn.execute(f"PRAGMA key='{password}'")
@@ -102,8 +102,18 @@ def register(u: str, p: str):
     username = u
     return True
 
-def update_user(old_username: str, old_password: str, new_username: str | None=None, new_password: str | None=None):
-    pass
+def update_user(op, np):
+    if op == "" or np == "": return False
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM users WHERE username=?", (username,))
+    _, p = cur.fetchone()
+    print(op, np)
+    print(p)
+    if sha384(op) != p: return False
+    cur.execute("UPDATE users SET password=? WHERE username=?", (sha384(op if not np else np), username))
+    conn.commit()
+    cur.close()
+    return True
 
 def verify_schema():
     cur = conn.cursor()
