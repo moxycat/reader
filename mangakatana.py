@@ -119,7 +119,6 @@ def search(
 
 def get_manga_chapter_images(url: str, s: HTMLSession) -> list:
     links = []
-    
     try:
         resp: requests_html.HTMLResponse = s.get(url)
         resp.html.render(timeout=60, reload=False)
