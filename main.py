@@ -32,7 +32,7 @@ settings.verify()
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
 
-menu = [["&Readers", []], ["&Library", ["&Open library", "&History"]], ["&Settings", ["&Preferences", "&Account settings", "&Help"]]]
+menu = [["&Readers", []], ["&Library", ["&Open library"]], ["&Settings", ["&Preferences", "&Account settings", "&Help"]]]
 
 search_controls = [
     [
@@ -239,6 +239,11 @@ def details(reader):
         print(pos)
         wdetails["details_chapters"].set_vscroll_position(pos)
 
+def format_results(results):
+    return [textwrap.shorten(a["title"], width=50, placeholder="...") for a in results]
+    
+
+
 while True:
     w, e, v = sg.read_all_windows()
     print(e)
@@ -330,7 +335,8 @@ while True:
     if e == "search": search(v, wind, html_session)
     
     if e == "search_update_status":
-        wind["search_status"].update("Found %d results and counting..." % v[e])
+        wind["search_status"].update("Found %d results and counting..." % len(v[e]))
+        wind["book_list"].update(format_results(v[e]))
         wind.refresh()
 
     if e == "search_cancel":
@@ -351,10 +357,9 @@ while True:
             wind["book_list"].update([])
             continue
         l = len(results)
-        names = [textwrap.shorten(a["title"], width=50, placeholder="...") for a in results]
         wind["search_status"].update("Found {} result{}.".format(l, "s" if l > 1 else ""))
+        wind["book_list"].update(format_results(results))
         set_status("Search complete!")
-        wind["book_list"].update(names)
         #wind["book_list"].set_size((None, len(names)))
 
     if e == "book_list":

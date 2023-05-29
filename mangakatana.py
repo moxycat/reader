@@ -112,7 +112,7 @@ def search(
     # if it exists we call the search function on it otherwise return current results
     if next_page_anchor is not None:
         # write to window (signify search progress)
-        wind.write_event_value("search_update_status", len(_results))
+        wind.write_event_value("search_update_status", _results)
         # call search function recursively
         search(query, search_by, sesh, wind, _results, next_page_anchor.attrs["href"])
     return _results
