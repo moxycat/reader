@@ -13,7 +13,7 @@ def RightClickMenuCallback(event, element):
 
 def make_window():
     menu = [
-        ["&File", ["Export as", ["&EPUB", "&CBZ", "&PDF"]]]
+        ["&File", ["Export as", ["&EPUB", "&CBZ", "&PDF"], "Download book"]]
     ]
     layout = [
         [sg.Menu(menu, key="details_menu")],

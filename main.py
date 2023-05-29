@@ -20,7 +20,7 @@ import account_settings
 from requests_html import HTMLSession
 
 sg.theme("Default1")
-sg.set_options(font=("Consolas", 10)) # Courier
+
 sg.set_options(ttk_theme="default")
 
 if not os.path.exists("settings.json"):
@@ -31,6 +31,8 @@ settings.verify()
 
 if settings.settings["ui"]["theme"] == "Dark":
     sg.theme("DarkGrey10")
+
+sg.set_options(font=("Consolas", settings.settings["ui"]["font_size"])) # Courier
 
 menu = [["&Readers", []], ["&Library", ["&Open library"]], ["&Settings", ["&Preferences", "&Account settings", "&Help"]]]
 
@@ -136,7 +138,7 @@ html_session.browser
 reader = Reader() # temp reader used for info tx when browsing books
 
 
-wdetails = None
+wdetails: sg.Window = None
 wreadlist = None
 wsettings = None
 wloading = None
@@ -463,6 +465,10 @@ while True:
         refresh_ui(reader.book_info["url"], "book_list_got_info")
         #wind.perform_long_operation(lambda: mangakatana.get_manga_info(reader.book_info["url"]), "book_list_got_info")
     
+    if w == wdetails and e == "Download book":
+        wdetails["details_chapters"].update(set_to_index=[i for i in range(len(reader.book_info["chapters"]))])
+        wdetails.write_event_value("Download", None)
+
     if w == wdetails and e == "Download":
         ixs = wdetails["details_chapters"].get_indexes()
         #ixs = [len(reader.book_info["chapters"]) - ix - 1 for ix in ixs_original]
@@ -861,7 +867,8 @@ while True:
                 "offline": v["settings_offline"]
             },
             "ui": {
-                "theme": v["settings_ui_theme"]
+                "theme": v["settings_ui_theme"],
+                "font_size": v["settings_ui_font_size"]
             },
             "reader": {
                 "w": v["settings_reader_width"],

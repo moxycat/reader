@@ -42,7 +42,8 @@ def make_window():
             [sg.Checkbox("Offline mode", key="settings_offline", tooltip="Disables all network connectivity of the app.", default=settings["general"]["offline"])]
         ])],
         [sg.Frame("UI", [
-            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")]
+            [sg.Text("Theme"), sg.Combo(["Light", "Dark"], default_value=settings["ui"]["theme"], key="settings_ui_theme", readonly=True, background_color="white")],
+            [sg.Text("Font size"), sg.Input(size=(3, 1), key="settings_ui_font_size", default_text=settings["ui"]["font_size"]), sg.Text("pt.")]
         ]
         )],
         [

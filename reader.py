@@ -163,7 +163,7 @@ class Reader:
         layout = [
             [sg.Menu([["&File", ["Save &screenshot", "Save &chapter"]], ["&Tools", ["Page scaling", ["Default", "Horizontal", "Vertical", "Both"], "Zoom", ["+", "-"]]]], key="reader_menu")],
             [sg.Column([
-                [sg.Button("⌕+", key="reader_zoom_in", pad=0), sg.Text("x1.0", key="reader_zoom_level", pad=0), sg.Button("⌕-", key="reader_zoom_out", pad=0), sg.Button("Fit", key="reader_zoom_fit", pad=0), sg.Button("Cache next ch.", key="reader_cache", pad=0)]
+                [sg.Button("⌕+", key="reader_zoom_in", pad=0, font=("Consolas", 10)), sg.Text("x1.0", key="reader_zoom_level", pad=0, font=("Consolas", 10)), sg.Button("⌕-", key="reader_zoom_out", pad=0, font=("Consolas", 10)), sg.Button("Fit", key="reader_zoom_fit", pad=0, font=("Consolas", 10)), sg.Button("Cache next ch.", key="reader_cache", pad=0, font=("Consolas", 10))]
             ], key="reader_zoom_controls", element_justification="l", justification="l", vertical_alignment="l")],
             [sg.HSeparator()],
             [
@@ -175,15 +175,15 @@ class Reader:
                 ],
                 [sg.HSeparator()],
                 [
-                    sg.Button("prev ch.", key="reader_go_prev_ch"),
-                    sg.Button("≪", key="reader_go_home"),
-                    sg.Text(), sg.Text(),
-                    sg.Button("<", key="reader_go_back"),
-                    sg.Text("01/??", key="reader_page_num", enable_events=True),
-                    sg.Button(">", key="reader_go_fwd"),
-                    sg.Text(), sg.Text(),
-                    sg.Button("≫", key="reader_go_end"),
-                    sg.Button("next ch.", key="reader_go_next_ch")
+                    sg.Button("prev ch.", key="reader_go_prev_ch", font=("Consolas", 10)),
+                    sg.Button("≪", key="reader_go_home", font=("Consolas", 10)),
+                    sg.Text(font=("Consolas", 10)), sg.Text(font=("Consolas", 10)),
+                    sg.Button("<", key="reader_go_back", font=("Consolas", 10)),
+                    sg.Text("01/??", key="reader_page_num", enable_events=True, font=("Consolas", 10)),
+                    sg.Button(">", key="reader_go_fwd", font=("Consolas", 10)),
+                    sg.Text(font=("Consolas", 10)), sg.Text(font=("Consolas", 10)),
+                    sg.Button("≫", key="reader_go_end", font=("Consolas", 10)),
+                    sg.Button("next ch.", key="reader_go_next_ch", font=("Consolas", 10))
                 ]
             ]
         ]
@@ -212,7 +212,15 @@ class Reader:
 
         self.window["reader_page_img"].bind("<Button-3>", "_reader_go_back")
         self.window["reader_page_img"].bind("<Button-1>", "_reader_go_fwd")
+        
         self.window.TKroot.minsize(45, (105 if settings.settings["ui"]["theme"] == "Light" else 107))
+        print(self.window["reader_go_prev_ch"].get_size(),
+              self.window["reader_go_home"].get_size(),
+              self.window["reader_page_num"].get_size(),
+              self.window["reader_go_back"].get_size(),
+              self.window["reader_go_next_ch"].get_size(),
+              "white space", sg.Text().get_size()
+            )
         #self.window["reader_page_img"].bind("<Double-Button-1>", "_reader_go_home")
         #self.window["reader_page_img"].bind("<Double-Button-3>","_reader_go_end")
     
